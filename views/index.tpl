@@ -1,5 +1,6 @@
-{{ template "partial/header" }}
 
-{{ template "partial/sidebar" }}
+<div class="p-3 row">
 
-{{ template "partial/footer" }}
+    <h3>Welcome! Select an option on the left</h3>
+
+</div>

@@ -3,7 +3,10 @@ package main
 import (
 	"log"
 
+	"github.com/atomic77/chiron/handlers"
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/logger"
+	"github.com/gofiber/fiber/v2/middleware/recover"
 	"github.com/gofiber/template/html/v2"
 )
 
@@ -20,25 +23,26 @@ func main() {
 		Views: engine,
 	})
 
-	app.Get("/", func(c *fiber.Ctx) error {
-		// Render index
-		return c.Render("index", fiber.Map{
-			"Title": "Hello, World!",
-		})
-	})
+	// Middleware
+	app.Use(recover.New())
+	app.Use(logger.New())
 
-	app.Get("/layout", func(c *fiber.Ctx) error {
-		// Render index within layouts/main
-		return c.Render("index", fiber.Map{
-			"Title": "Hello, World!",
-		}, "layouts/main")
-	})
+	app.Get("/", handlers.Index)
+	app.Get("/interfaces", handlers.Interfaces)
+	app.Get("/devices", handlers.Devices)
 
-	app.Get("/layouts-nested", func(c *fiber.Ctx) error {
-		// Render index within layouts/nested/main within layouts/nested/base
-		return c.Render("index", fiber.Map{
-			"Title": "Hello, World!",
-		}, "layouts/nested/main", "layouts/nested/base")
+	/*
+		Can eventually create groups like so
+		// Create a /api/v1 endpoint
+		v1 := app.Group("/api/v1")
+
+		// Bind handlers
+		v1.Get("/users", handlers.UserList)
+		v1.Post("/users", handlers.UserCreate)
+	*/
+
+	app.Get("/favicon.ico", func(c *fiber.Ctx) error {
+		return c.SendFile("static/laptop.svg")
 	})
 
 	log.Fatal(app.Listen(":3000"))

@@ -1,5 +1,4 @@
-TARGET = hello
-ARCH = $(shell uname -m | sed 's/x86_64/x86/' | sed 's/aarch64/arm64/')
+TARGET = tcfilt
 
 BPF_OBJ = ${TARGET:=.bpf.o}
 
@@ -7,11 +6,12 @@ all: $(TARGET) $(BPF_OBJ)
 .PHONY: all 
 .PHONY: $(TARGET)
 
+# bpftool prog load $(BPF_OBJ) /sys/fs/bpf/$(TARGET)
+# bpftool net attach xdp pinned /sys/fs/bpf/$(TARGET) dev lo
+# bpftool net detach xdp dev lo
+
 $(TARGET): $(BPF_OBJ)
-	bpftool net detach xdp dev lo
-	rm -f /sys/fs/bpf/$(TARGET)
-	bpftool prog load $(BPF_OBJ) /sys/fs/bpf/$(TARGET)
-	bpftool net attach xdp pinned /sys/fs/bpf/$(TARGET) dev lo
+	sudo rm -f /sys/fs/bpf/$(TARGET)
 
 $(BPF_OBJ): %.o: %.c vmlinux.h
 	clang \
@@ -25,9 +25,9 @@ vmlinux.h:
 	bpftool btf dump file /sys/kernel/btf/vmlinux format c > vmlinux.h		
 
 clean:
-	- bpftool net detach xdp dev lo
-	- bpftool net detach xdp dev docker0
-	- rm -f /sys/fs/bpf/$(TARGET)
+	# - bpftool net detach xdp dev lo
+	# - bpftool net detach xdp dev docker0
+	- sudo rm -f /sys/fs/bpf/$(TARGET)
 	- rm $(BPF_OBJ)
-	- tc filter delete dev docker0 parent ffff:
+	# - tc filter delete dev docker0 parent ffff:
 
