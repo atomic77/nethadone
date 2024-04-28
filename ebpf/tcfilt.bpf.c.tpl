@@ -1,7 +1,3 @@
-/* Old reference example; 
-Actual changes should go to .tpl which gets rendered and injected
-on the fly 
-*/
 #include <linux/bpf.h>
 #include <arpa/inet.h>
 #include <linux/pkt_cls.h>
@@ -68,19 +64,16 @@ int tc_ingress(struct __sk_buff *skb)
 
     // if (bpf_ntohs(l3->tot_len) > 300) {
     if (
-      l3->saddr == IP_ADDRESS(192,168,0,108) && 
-      l3->daddr == IP_ADDRESS(192,168,0,14)
+      l3->saddr == IP_ADDRESS({{ .SrcIpAddr}}) && 
+      l3->daddr == IP_ADDRESS({{ .DestIpAddr}})
     ) {
      __bpf_vprintk(
         "Got packet: tot_len: %d, ttl: %d, saddr: %pI4, daddr: %pI4, tstmp: %lld, cls: %d", 
         bpf_ntohs(l3->tot_len), 
         l3->ttl, &l3->saddr, &l3->daddr, skb->tstamp, skb->tc_classid
       );
-      skb->tstamp = skb->tstamp + (10 * MILLIS);
+      skb->tstamp = skb->tstamp + ({{ .DelayMs }} * MILLIS);
       
-      // __sync_fetch_and_add()
-      // ctx->tc_classid = 1;
-      // return TC_ACT_QUEUED;
     }
 
 

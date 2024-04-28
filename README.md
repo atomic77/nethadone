@@ -15,10 +15,23 @@ apt-get install -y apt-transport-https ca-certificates curl clang llvm jq libelf
 
 ## TC ingress example
 
-Replace qdisc for interface w/ FQ root:
+Replace qdisc for interface w/ FQ root. Unsure why the initial creation of clsact
 ```bash
 sudo tc qdisc add dev enx3a406b1307a9 clsact
 sudo tc qdisc replace dev enx3a406b1307a9 root fq
+```
+
+Note:
+replace above seems to be necessary (ends up replacing pfifo_fast with fq ?)
+
+```bash
+$ sudo tc qdisc show
+qdisc pfifo_fast 0: dev enx3a406b1307a9 root refcnt 2 bands 3 priomap 1 2 2 2 1 2 0 0 1 1 1 1 1 1 1 1
+qdisc clsact ffff: dev enx3a406b1307a9 parent ffff:fff1
+atomic@r1plus:~/chiron$ sudo tc qdisc replace dev enx3a406b1307a9 root fq
+atomic@r1plus:~/chiron$ sudo tc qdisc show
+qdisc fq 8001: dev enx3a406b1307a9 root refcnt 2 limit 10000p flow_limit 100p buckets 1024 orphan_mask 1023 quantum 3028b initial_quantum 15140b low_rate_threshold 550Kbit refill_delay 40ms timer_slack 10us horizon 10s horizon_drop
+qdisc clsact ffff: dev enx3a406b1307a9 parent ffff:fff1
 ```
 
 build, attach:
@@ -35,6 +48,20 @@ sudo cat /sys/kernel/debug/tracing/trace_pipe
 # To remove
 sudo tc filter del dev enp0s3 egress
 ```
+
+## Golang example vs working tcfilt
+
+```bash
+$ sudo bpftool prog list
+24: sched_cls  name test  tag a04f5eef06a7f555  gpl
+        loaded_at 2024-04-28T14:40:14-0400  uid 0
+        xlated 16B  jited 104B  memlock 4096B
+29: sched_cls  name tc_ingress  tag c285f188f853dd97  gpl
+        loaded_at 2024-04-28T14:45:23-0400  uid 0
+        xlated 472B  jited 408B  memlock 4096B  map_ids 5
+        btf_id 9
+```
+
 
 ## Other examples
 
