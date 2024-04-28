@@ -127,7 +127,7 @@
                     </a>
                 </li>
                 <li>
-                    <a href="#" class="nav-link text-white">
+                    <a href="/rulesets" class="nav-link text-white">
                         <i class="bi bi-journal-code me-2"></i> 
                         Rulesets
                     </a>

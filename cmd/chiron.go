@@ -30,6 +30,8 @@ func main() {
 	app.Get("/", handlers.Index)
 	app.Get("/interfaces", handlers.Interfaces)
 	app.Get("/devices", handlers.Devices)
+	app.Get("/rulesets", handlers.Rules)
+	app.Post("/rulesets/change", handlers.RuleChange)
 
 	/*
 		Can eventually create groups like so
