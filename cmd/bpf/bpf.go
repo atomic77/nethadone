@@ -61,7 +61,7 @@ func getSampleProg() *ebpf.Program {
 
 	prog, err := ebpf.NewProgram(&spec)
 	if err != nil {
-		log.Panic(err)
+		log.Fatal(err)
 	}
 
 	return prog
@@ -77,14 +77,14 @@ func compileBpf(tplfile string, target string, p *filtParams) {
 	cfile := "/tmp/mybpfprog.c"
 	f, err := os.Create(cfile)
 	if err != nil {
-		log.Panic("failed to create rendered file ", err)
+		log.Fatal("failed to create rendered file ", err)
 	}
 	// tpl := template.Must(template.New("t").ParseFiles(tplfile))
 	tpl := template.Must(template.ParseFiles(tplfile))
 	// err = tpl.ExecuteTemplate(f, tplfile, p)
 	err = tpl.Execute(f, p)
 	if err != nil {
-		log.Panic("failed to render file ", err)
+		log.Fatal("failed to render file ", err)
 	}
 
 	out, err := exec.Command(
@@ -94,7 +94,7 @@ func compileBpf(tplfile string, target string, p *filtParams) {
 		`clang -g -O2 -I/usr/include/aarch64-linux-gnu -Wall -target bpf -c `+cfile+" -o "+target,
 	).CombinedOutput()
 	if err != nil {
-		log.Panic("failed to compile ebpf prog, out: ", string(out), " err: ", err)
+		log.Fatal("failed to compile ebpf prog, out: ", string(out), " err: ", err)
 	}
 	log.Println("Compilation output: ", string(out))
 }
@@ -118,7 +118,7 @@ func attachQdiscToIface(tcnl *tc.Tc, iface *net.Interface) {
 	if err := tcnl.Qdisc().Add(&qdisc); err != nil {
 		log.Println("couldn't add qdisc ", err)
 		if err := tcnl.Qdisc().Replace(&qdisc); err != nil {
-			log.Panic("couldn't replace qdisc ", err)
+			log.Fatal("couldn't replace qdisc ", err)
 		}
 	}
 }
@@ -138,7 +138,7 @@ func main() {
 
 	tcnl, err := tc.Open(&tc.Config{})
 	if err != nil {
-		log.Panic("Failed to get tc handle", err)
+		log.Fatal("Failed to get tc handle", err)
 	}
 	defer func() {
 		if err := tcnl.Close(); err != nil {
@@ -161,7 +161,7 @@ func main() {
 
 	iface, err := net.InterfaceByName("enx3a406b1307a9")
 	if err != nil {
-		log.Panic(err)
+		log.Fatal(err)
 	}
 
 	// Try to use an existing qdisc; o/w create
@@ -176,20 +176,20 @@ func main() {
 	}
 
 	compileBpf(
-		"/home/atomic/chiron/ebpf/tcfilt.bpf.c.tpl",
-		"/home/atomic/chiron/ebpf/tcfilt.o",
+		"/home/atomic/nethadone/ebpf/tcfilt.bpf.c.tpl",
+		"/home/atomic/nethadone/ebpf/tcfilt.o",
 		&fparams,
 	)
 
 	// prog := getSampleProg()
 	spec, err := ebpf.LoadCollectionSpec("ebpf/tcfilt.o")
 	if err != nil {
-		log.Panic("failed to load spec ", err)
+		log.Fatal("failed to load spec ", err)
 	}
 
 	var objs filtObjs
 	if err := spec.LoadAndAssign(&objs, nil); err != nil {
-		log.Panic("failed to load and assign prog spec", err)
+		log.Fatal("failed to load and assign prog spec", err)
 	}
 
 	fd := uint32(objs.Prog.FD())

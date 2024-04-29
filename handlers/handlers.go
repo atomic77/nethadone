@@ -1,9 +1,11 @@
 package handlers
 
 import (
+	"encoding/binary"
 	"log"
 	"strconv"
 
+	"github.com/alecthomas/repr"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/utils"
 	"github.com/vishvananda/netlink"
@@ -23,17 +25,17 @@ func Interfaces(c *fiber.Ctx) error {
 	// Main page for interface list
 	ifaces, err := net.Interfaces()
 	if err != nil {
-		log.Panic("Something weird when trying to list ifaces", err)
+		log.Fatal("Something weird when trying to list ifaces", err)
 	}
 
 	nh, err := netlink.NewHandle(unix.NETLINK_ROUTE)
 	if err != nil {
-		log.Panic("could not get netlink handle", err)
+		log.Fatal("could not get netlink handle", err)
 	}
 
 	ll, err := nh.LinkList()
 	if err != nil {
-		log.Panic("could not get get link list", err)
+		log.Fatal("could not get get link list", err)
 	}
 
 	return c.Render("interfaces", fiber.Map{
@@ -45,15 +47,63 @@ func Interfaces(c *fiber.Ctx) error {
 
 func Rules(c *fiber.Ctx) error {
 
-	// Only one default rule for now
+	// TODO Retrieve these from system
 	fparams := make([]FiltParams, 1)
 	fparams[0] = FiltParams{
 		SrcIpAddr:  "192,168,0,108",
 		DestIpAddr: "192,168,0,14",
 		DelayMs:    10,
 	}
+	var key, val uint64
+	vals := make(map[uint64]uint64, 1)
+	log.Println("tcfilter objs ref", repr.String(BpfCtx.TcFilterObjs))
+	if BpfCtx.TcFilterObjs != nil {
+		entries := BpfCtx.TcFilterObjs.Map.Iterate()
+		for entries.Next(&key, &val) {
+			vals[key] = val
+		}
+	}
+
 	return c.Render("rules", fiber.Map{
 		"FiltParams": fparams,
+		"MapValues":  vals,
+	}, "layouts/base")
+}
+
+type BandwidthList struct {
+	SrcIpAddr  net.IP
+	DestIpAddr net.IP
+	Bytes      uint64
+}
+
+func Bandwidth(c *fiber.Ctx) error {
+
+	var key, val uint64
+	vals := make([]BandwidthList, 0)
+	log.Println("tcfilter objs ref", repr.String(BpfCtx.TcFilterObjs))
+	if BpfCtx.TcFilterObjs != nil {
+		entries := BpfCtx.TcFilterObjs.Map.Iterate()
+		for entries.Next(&key, &val) {
+			// net.IP
+			b := make([]byte, 8)
+			binary.LittleEndian.PutUint64(b, key)
+			src := binary.BigEndian.Uint32(b[0:4])
+			dest := binary.BigEndian.Uint32(b[4:8])
+			srcip := make(net.IP, 4)
+			binary.BigEndian.PutUint32(srcip, src)
+			destip := make(net.IP, 4)
+			binary.BigEndian.PutUint32(destip, dest)
+			bl := BandwidthList{
+				SrcIpAddr:  srcip,
+				DestIpAddr: destip,
+				Bytes:      val,
+			}
+			vals = append(vals, bl)
+		}
+	}
+
+	return c.Render("bandwidth", fiber.Map{
+		"BandwidthList": vals,
 	}, "layouts/base")
 }
 

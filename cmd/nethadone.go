@@ -3,10 +3,9 @@ package main
 import (
 	"log"
 
-	"github.com/atomic77/chiron/handlers"
+	"github.com/atomic77/nethadone/handlers"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/logger"
-	"github.com/gofiber/fiber/v2/middleware/recover"
 	"github.com/gofiber/template/html/v2"
 )
 
@@ -24,7 +23,7 @@ func main() {
 	})
 
 	// Middleware
-	app.Use(recover.New())
+	// app.Use(recover.New())
 	app.Use(logger.New())
 
 	app.Get("/", handlers.Index)
@@ -32,6 +31,7 @@ func main() {
 	app.Get("/devices", handlers.Devices)
 	app.Get("/rulesets", handlers.Rules)
 	app.Post("/rulesets/change", handlers.RuleChange)
+	app.Get("/bandwidth", handlers.Bandwidth)
 
 	/*
 		Can eventually create groups like so

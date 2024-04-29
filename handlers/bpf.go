@@ -1,13 +1,13 @@
 package handlers
 
 import (
-	"fmt"
 	"log"
 	"net"
 	"os"
 	"os/exec"
 	"text/template"
 
+	"github.com/alecthomas/repr"
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/asm"
 	tc "github.com/florianl/go-tc"
@@ -22,9 +22,18 @@ type filtObjs struct {
 	// TODO Add data structure in here
 	// bpf2go can be used to automate and sync this, but for now
 	// should be simple enough to maintain these links
-	// Map  *ebpf.Map     `ebpf:"my_map"`
+	Map  *ebpf.Map     `ebpf:"src_dest_bytes"`
 	Prog *ebpf.Program `ebpf:"tc_ingress"`
 }
+
+// Need to better understand why this is necessary to get the
+// context to be shareable across calls
+type BpfContext struct {
+	Tcnl         *tc.Tc
+	TcFilterObjs *filtObjs
+}
+
+var BpfCtx BpfContext
 
 // Comma separated, eg. 192,168,0,14
 type FiltParams struct {
@@ -60,7 +69,7 @@ func getSampleProg() *ebpf.Program {
 
 	prog, err := ebpf.NewProgram(&spec)
 	if err != nil {
-		log.Panic(err)
+		log.Fatal(err)
 	}
 
 	return prog
@@ -76,14 +85,14 @@ func compileBpf(tplfile string, target string, p *FiltParams) {
 	cfile := "/tmp/mybpfprog.c"
 	f, err := os.Create(cfile)
 	if err != nil {
-		log.Panic("failed to create rendered file ", err)
+		log.Fatal("failed to create rendered file ", err)
 	}
 	// tpl := template.Must(template.New("t").ParseFiles(tplfile))
 	tpl := template.Must(template.ParseFiles(tplfile))
 	// err = tpl.ExecuteTemplate(f, tplfile, p)
 	err = tpl.Execute(f, p)
 	if err != nil {
-		log.Panic("failed to render file ", err)
+		log.Fatal("failed to render file ", err)
 	}
 
 	out, err := exec.Command(
@@ -93,7 +102,7 @@ func compileBpf(tplfile string, target string, p *FiltParams) {
 		`clang -g -O2 -I/usr/include/aarch64-linux-gnu -Wall -target bpf -c `+cfile+" -o "+target,
 	).CombinedOutput()
 	if err != nil {
-		log.Panic("failed to compile ebpf prog, out: ", string(out), " err: ", err)
+		log.Fatal("failed to compile ebpf prog, out: ", string(out), " err: ", err)
 	}
 	log.Println("Compilation output: ", string(out))
 }
@@ -118,7 +127,7 @@ func attachQdiscToIface(tcnl *tc.Tc, iface *net.Interface) {
 	if err := tcnl.Qdisc().Add(&qdisc); err != nil {
 		log.Println("couldn't add qdisc ", err)
 		if err := tcnl.Qdisc().Replace(&qdisc); err != nil {
-			log.Panic("couldn't replace qdisc ", err)
+			log.Fatal("couldn't replace qdisc ", err)
 		}
 	}
 }
@@ -144,44 +153,41 @@ func getQdiscInfo() {
 func redeployBpf(fparams *FiltParams) {
 	// Cli tool to use pure go for manipulating TC tables
 
-	tcnl, err := tc.Open(&tc.Config{})
-	if err != nil {
-		log.Panic("Failed to get tc handle", err)
-	}
-	defer func() {
-		if err := tcnl.Close(); err != nil {
-			log.Printf("could not close rtnetlink socket: %v\n", err)
-		}
-	}()
-
-	err = tcnl.SetOption(netlink.ExtendedAcknowledge, true)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "could not set option ExtendedAcknowledge: %v\n", err)
-		return
-	}
+	tcnl := getTcnl()
 
 	iface, err := net.InterfaceByName("enx3a406b1307a9")
 	if err != nil {
-		log.Panic(err)
+		log.Fatal(err)
 	}
 
 	compileBpf(
-		"/home/atomic/chiron/ebpf/tcfilt.bpf.c.tpl",
-		"/home/atomic/chiron/ebpf/tcfilt.o",
+		"/home/atomic/nethadone/ebpf/tcfilt.bpf.c.tpl",
+		"/home/atomic/nethadone/ebpf/tcfilt.o",
 		fparams,
 	)
 
 	spec, err := ebpf.LoadCollectionSpec("ebpf/tcfilt.o")
 	if err != nil {
-		log.Panic("failed to load spec ", err)
+		log.Fatal("failed to load spec ", err)
 	}
 
-	var objs filtObjs
-	if err := spec.LoadAndAssign(&objs, nil); err != nil {
-		log.Panic("failed to load and assign prog spec", err)
+	if BpfCtx.TcFilterObjs != nil {
+		BpfCtx.TcFilterObjs.Prog.Close()
 	}
+	tcFilt := &filtObjs{}
+	if err := spec.LoadAndAssign(tcFilt, nil); err != nil {
+		log.Fatal("failed to load and assign prog spec", err)
+	}
+	BpfCtx.TcFilterObjs = tcFilt
 
-	fd := uint32(objs.Prog.FD())
+	// Why is the tcFilterObjs reference modified here not
+	// visible in handlers.go ??
+	// Look at this as a better example of how to manage
+	// https://github.com/gofiber/recipes/blob/master/gorm-postgres/app.go
+
+	log.Println("bpf - tcfilter objs ref", repr.String(BpfCtx.TcFilterObjs))
+	// fd := uint32(BpfCtx.TcFilterObjs.Prog.FD())
+	fd := uint32(tcFilt.Prog.FD())
 	flags := uint32(0x1)
 
 	// Create a tc/filter object that will attach the eBPF program to the qdisc/clsact.
@@ -204,7 +210,32 @@ func redeployBpf(fparams *FiltParams) {
 
 	// Attach the tc/filter object with the eBPF program to the qdisc/clsact.
 	if err := tcnl.Filter().Add(&filter); err != nil {
-		fmt.Fprintf(os.Stderr, "could not attach filter for eBPF program: %v\n", err)
+		log.Fatal("could not attach filter for eBPF program: ", err)
 		return
 	}
+}
+
+func getTcnl() *tc.Tc {
+	if BpfCtx.Tcnl != nil {
+		return BpfCtx.Tcnl
+	}
+
+	tcnl, err := tc.Open(&tc.Config{})
+	if err != nil {
+		log.Fatal("Failed to get tc handle", err)
+	}
+	// Need to defer this to shutdown or another more appropriate time
+	// defer func() {
+	// 	log.Println("Cleaning up tcnl")
+	// 	if err := tcnl.Close(); err != nil {
+	// 		log.Printf("could not close rtnetlink socket: %v\n", err)
+	// 	}
+	// }()
+
+	err = tcnl.SetOption(netlink.ExtendedAcknowledge, true)
+	if err != nil {
+		log.Fatal("could not set option ExtendedAcknowledge ", err)
+	}
+	BpfCtx.Tcnl = tcnl
+	return BpfCtx.Tcnl
 }

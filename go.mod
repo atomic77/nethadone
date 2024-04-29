@@ -1,12 +1,13 @@
-module github.com/atomic77/chiron
+module github.com/atomic77/nethadone
 
 go 1.22
 
 require (
+	github.com/alecthomas/repr v0.4.0 // indirect
 	github.com/andybalholm/brotli v1.1.0 // indirect
 	github.com/cilium/ebpf v0.15.0 // indirect
 	// github.com/florianl/go-tc v0.4.3 // indirect
-	// Includes new versions of FQ that are supported by 
+	// Includes new versions of FQ that are supported by
 	// 6.6 kernel on r1plus
 	github.com/florianl/go-tc v0.4.4-0.20240420070658-d2abd056a2d7 // indirect
 	github.com/gofiber/fiber/v2 v2.52.4 // indirect

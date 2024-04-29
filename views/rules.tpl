@@ -24,6 +24,11 @@
         </tbody>
     </table>
 
+    <h3> Map contents: </h3>
+    {{ range $key, $val := .MapValues }}
+        <p>k,v: {{ $key }}, {{ $val }}</p>
+    {{ end }}
+
     <form action="/rulesets/change" method="POST" class="p-3">
         <div class="row">
 

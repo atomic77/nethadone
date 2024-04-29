@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/atomic77/chiron/models"
+	"github.com/atomic77/nethadone/models"
 )
 
 var (

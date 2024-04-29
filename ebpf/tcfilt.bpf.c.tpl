@@ -27,6 +27,12 @@
 #define IP_ADDRESS(o1, o2, o3, o4) (unsigned int)(o1 + (o2 << 8) + (o3 << 16) + (o4 << 24))
 #define MILLIS 1000*1000
 
+struct {
+    __uint(type, BPF_MAP_TYPE_HASH);
+    __type(key, __u64);
+    __type(value, __u64);
+    __uint(max_entries, 255);
+} src_dest_bytes SEC(".maps");
 
 SEC("tc")
 int tc_ingress(struct __sk_buff *skb)
@@ -73,6 +79,13 @@ int tc_ingress(struct __sk_buff *skb)
         l3->ttl, &l3->saddr, &l3->daddr, skb->tstamp, skb->tc_classid
       );
       skb->tstamp = skb->tstamp + ({{ .DelayMs }} * MILLIS);
+      __u64 key = ((__u64) l3->saddr) << 32 | ((__u64)l3->daddr);
+      __u64 val = bpf_ntohs(l3->tot_len);
+      __u64 *p = bpf_map_lookup_elem(&src_dest_bytes, &key);
+      if (p != 0) {
+        val = *p + bpf_ntohs(l3->tot_len);
+      } 
+      bpf_map_update_elem(&src_dest_bytes, &key, &val, BPF_ANY);
       
     }
 

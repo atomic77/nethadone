@@ -28,6 +28,14 @@ on the fly
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_tracing.h>
 
+struct {
+    __uint(type, BPF_MAP_TYPE_HASH);
+    __type(key, __u64); // 64-bit int for src/dest IP addr pair
+    __type(value, __u64); // number of packets 
+    __uint(max_entries, 255);
+} src_dest_bytes SEC(".maps");
+
+
 #define IP_ADDRESS(o1, o2, o3, o4) (unsigned int)(o1 + (o2 << 8) + (o3 << 16) + (o4 << 24))
 #define MILLIS 1000*1000
 
@@ -40,10 +48,6 @@ int tc_ingress(struct __sk_buff *skb)
     struct ethhdr *l2;
     struct iphdr *l3;
     
-    // struct sockaddr_in sa;
-    // unsigned int filt_addr;
-    // char 
-
     if (skb->protocol != bpf_htons(ETH_P_IP))
         return TC_ACT_OK;
 
@@ -56,17 +60,6 @@ int tc_ingress(struct __sk_buff *skb)
     if ((void *)(l3 + 1) > data_end)
         return TC_ACT_OK;
 
-    // Basic working:
-    // sudo tc filter add dev enp0s3 egress bpf direct-action obj tcfilt.o sec tc
-    //
-    // In order to make use of the tstamp marker for packets, need to switch interface
-    // to fair queuing mode:
-    // sudo tc qdisc replace dev enp0s3 root fq
-    // Then add filter as usual:
-    // sudo tc filter add dev enp0s3 egress bpf direct-action obj tcfilt.o sec tc
-    
-
-    // if (bpf_ntohs(l3->tot_len) > 300) {
     if (
       l3->saddr == IP_ADDRESS(192,168,0,108) && 
       l3->daddr == IP_ADDRESS(192,168,0,14)
@@ -77,10 +70,23 @@ int tc_ingress(struct __sk_buff *skb)
         l3->ttl, &l3->saddr, &l3->daddr, skb->tstamp, skb->tc_classid
       );
       skb->tstamp = skb->tstamp + (10 * MILLIS);
-      
-      // __sync_fetch_and_add()
-      // ctx->tc_classid = 1;
-      // return TC_ACT_QUEUED;
+      __u64 key = ((__u64) l3->saddr) << 32 | ((__u64)l3->daddr);
+      __u64 val = bpf_ntohs(l3->tot_len);
+      __u64 *p = bpf_map_lookup_elem(&src_dest_bytes, &key);
+      if (p != 0) {
+        val = *p + bpf_ntohs(l3->tot_len);
+      } 
+      bpf_map_update_elem(&src_dest_bytes, &key, &val, BPF_ANY);
+      /* Sample python code for splitting 
+        >>> i
+        7782405698918328512
+        >>> b0 = i >> 32
+        >>> b1 = i & 0x00000000FFFFFFFF
+        >>> socket.inet_ntoa(struct.pack("!I", b0))
+        '108.0.168.192'
+        >>> socket.inet_ntoa(struct.pack("!I", b1))
+        '14.0.168.192'
+      */
     }
 
 
