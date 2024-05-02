@@ -69,15 +69,17 @@ int tc_ingress(struct __sk_buff *skb)
     
 
     // if (bpf_ntohs(l3->tot_len) > 300) {
+    // && l3->daddr == IP_ADDRESS({{ .DestIpAddr}})
     if (
-      l3->saddr == IP_ADDRESS({{ .SrcIpAddr}}) && 
-      l3->daddr == IP_ADDRESS({{ .DestIpAddr}})
+      l3->saddr == IP_ADDRESS({{ .SrcIpAddr}})
+      || l3->daddr == IP_ADDRESS({{ .SrcIpAddr}})
     ) {
-     __bpf_vprintk(
+     /*__bpf_vprintk(
         "Got packet: tot_len: %d, ttl: %d, saddr: %pI4, daddr: %pI4, tstmp: %lld, cls: %d", 
         bpf_ntohs(l3->tot_len), 
         l3->ttl, &l3->saddr, &l3->daddr, skb->tstamp, skb->tc_classid
       );
+      */
       skb->tstamp = skb->tstamp + ({{ .DelayMs }} * MILLIS);
       __u64 key = ((__u64) l3->saddr) << 32 | ((__u64)l3->daddr);
       __u64 val = bpf_ntohs(l3->tot_len);

@@ -180,11 +180,6 @@ func redeployBpf(fparams *FiltParams) {
 	}
 	BpfCtx.TcFilterObjs = tcFilt
 
-	// Why is the tcFilterObjs reference modified here not
-	// visible in handlers.go ??
-	// Look at this as a better example of how to manage
-	// https://github.com/gofiber/recipes/blob/master/gorm-postgres/app.go
-
 	log.Println("bpf - tcfilter objs ref", repr.String(BpfCtx.TcFilterObjs))
 	// fd := uint32(BpfCtx.TcFilterObjs.Prog.FD())
 	fd := uint32(tcFilt.Prog.FD())
@@ -196,8 +191,9 @@ func redeployBpf(fparams *FiltParams) {
 			Family:  unix.AF_UNSPEC,
 			Ifindex: uint32(iface.Index),
 			Handle:  0,
-			Parent:  core.BuildHandle(tc.HandleRoot, tc.HandleMinEgress),
-			Info:    0x300,
+			// Parent:  core.BuildHandle(tc.HandleRoot, tc.HandleMinEgress),
+			Parent: core.BuildHandle(tc.HandleRoot, tc.HandleMinIngress),
+			Info:   0x300,
 		},
 		Attribute: tc.Attribute{
 			Kind: "bpf",
