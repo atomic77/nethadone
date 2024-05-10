@@ -49,6 +49,18 @@ sudo cat /sys/kernel/debug/tracing/trace_pipe
 sudo tc filter del dev enp0s3 egress
 ```
 
+## R1plus Kernel BTF support
+
+Armbian builds for r1plus do not have BTF kernel debugging info built in
+at `/sys/kernel/btf/vmlinux`. Attempting to build a new kernel with the required
+options like DEBUG_INFO_BTF does not seem to produce an image which can 
+be started up, and takes forever. 
+
+https://github.com/daeuniverse/armbian-btf-kernel has some kernels which 
+can be copied into an Armbian Jammy 23.08 fresh installation; need to 
+use `kernel-rockchip64-current_23.08.0-trunk--6.1.34-Sca87-Dbeb1-Pa401-C3053Hfe66-HK01ba-Vc222-B76dc.tar` for orangepi-r1plus.
+
+
 ## IP Address Aggregation
 
 Great repo with ip address block reservation info:
