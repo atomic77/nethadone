@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 
+	"github.com/atomic77/nethadone/database"
 	"github.com/atomic77/nethadone/handlers"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/logger"
@@ -21,6 +22,7 @@ func main() {
 	app := fiber.New(fiber.Config{
 		Views: engine,
 	})
+	database.Connect()
 
 	// Middleware
 	// app.Use(recover.New())
@@ -32,6 +34,8 @@ func main() {
 	app.Get("/rulesets", handlers.Rules)
 	app.Post("/rulesets/change", handlers.RuleChange)
 	app.Get("/bandwidth", handlers.Bandwidth)
+	app.Get("/globs", handlers.Globs)
+	app.Post("/globs/add", handlers.GlobAdd)
 
 	/*
 		Can eventually create groups like so

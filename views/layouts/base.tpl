@@ -139,6 +139,12 @@
                     </a>
                 </li>
                 <li>
+                    <a href="/globs" class="nav-link text-white">
+                        <i class="bi bi-bullseye me-2"></i>
+                        Globs
+                    </a>
+                </li>
+                <li>
                     <a href="/bandwidth" class="nav-link text-white">
                         <i class="bi bi-laptop me-2"></i>
                         Bandwidth

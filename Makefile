@@ -1,4 +1,4 @@
-project_name = boilerPlate
+project_name = nethadone
 image_name = gofiber:latest
 
 help: ## This help dialog.
@@ -6,6 +6,9 @@ help: ## This help dialog.
 
 run-local: ## Run the app locally
 	go run ./cmd/nethadone.go
+
+dev:
+	fiber dev -t cmd/nethadone.go
 
 requirements: ## Generate go.mod & go.sum files
 	go mod tidy

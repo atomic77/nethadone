@@ -6,6 +6,8 @@ import (
 	"strconv"
 
 	"github.com/alecthomas/repr"
+	"github.com/atomic77/nethadone/database"
+	"github.com/atomic77/nethadone/models"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/utils"
 	"github.com/vishvananda/netlink"
@@ -68,6 +70,31 @@ func Rules(c *fiber.Ctx) error {
 		"FiltParams": fparams,
 		"MapValues":  vals,
 	}, "layouts/base")
+}
+
+func Globs(c *fiber.Ctx) error {
+
+	g := database.GetGlobs()
+
+	return c.Render("globs", fiber.Map{
+		"Globs": g,
+	}, "layouts/base")
+}
+
+func GlobAdd(c *fiber.Ctx) error {
+
+	g := models.GlobGroup{
+		Name:        utils.CopyString(c.FormValue("name")),
+		Description: utils.CopyString(c.FormValue("description")),
+		Glob:        utils.CopyString(c.FormValue("glob")),
+		Device:      utils.CopyString(c.FormValue("device")),
+	}
+
+	err := database.AddGlob(&g)
+	if err != nil {
+		log.Println("Failed to insert glob record ", err)
+	}
+	return c.Redirect("/globs")
 }
 
 type BandwidthList struct {
