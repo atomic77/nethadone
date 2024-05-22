@@ -20,6 +20,8 @@
                 <th scope="col">#</th>
                 <th scope="col">SrcIp</th>
                 <th scope="col">DestIp</th>
+                <th scope="col">Likely Domain</th>
+                <th scope="col">Glob Group</th>
                 <th scope="col">Bytes</th>
             </tr>
         </thead>
@@ -29,6 +31,8 @@
                 <th scope="row"></th>
                 <td>{{ .SrcIpAddr }}</td>
                 <td>{{ .DestIpAddr }}</td>
+                <td>{{ .ProbDomain }}</td>
+                <td>{{ .GlobName }}</td>
                 <td>{{ .Bytes }}</td>
             </tr>
             {{end}}

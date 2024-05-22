@@ -159,9 +159,9 @@ func main() {
 		return
 	}
 
-	iface, err := net.InterfaceByName("enx3a406b1307a9")
+	iface, err := net.InterfaceByName("eth0")
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal("could not open interface ", err)
 	}
 
 	// Try to use an existing qdisc; o/w create

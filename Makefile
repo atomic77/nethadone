@@ -20,7 +20,14 @@ up: ## Run the project in a local container
 	make up-silent
 	make shell
 
+run-root: ## Generate docker image
+	go build ./cmd/nethadone.go
+	sudo ./nethadone
+
 build: ## Generate docker image
+	go build ./cmd/nethadone.go
+
+build-docker: ## Generate docker image
 	docker build -t $(image_name) .
 
 build-no-cache: ## Generate docker image with no cache

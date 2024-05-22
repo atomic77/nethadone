@@ -76,21 +76,21 @@ func getSampleProg() *ebpf.Program {
 
 }
 
-func compileBpf(tplfile string, target string, p *FiltParams) {
+func compileBpf(tplfile string, target string, fparams *[]FiltParams) {
 	// Uff. There must be a better way that avoids ebpf2go.
 	// FIXME when root compiles the bpf code, it fails to load for some reason, so su back
 	// to regular user acct which produces different object code
 
-	// tpl.Execute()
 	cfile := "/tmp/mybpfprog.c"
 	f, err := os.Create(cfile)
 	if err != nil {
 		log.Fatal("failed to create rendered file ", err)
 	}
-	// tpl := template.Must(template.New("t").ParseFiles(tplfile))
 	tpl := template.Must(template.ParseFiles(tplfile))
-	// err = tpl.ExecuteTemplate(f, tplfile, p)
-	err = tpl.Execute(f, p)
+	type fdata struct {
+		FiltParams *[]FiltParams
+	}
+	err = tpl.Execute(f, fdata{FiltParams: fparams})
 	if err != nil {
 		log.Fatal("failed to render file ", err)
 	}
@@ -150,12 +150,12 @@ func getQdiscInfo() {
 	*/
 
 }
-func redeployBpf(fparams *FiltParams) {
+func redeployBpf(fparams *[]FiltParams) {
 	// Cli tool to use pure go for manipulating TC tables
 
 	tcnl := getTcnl()
 
-	iface, err := net.InterfaceByName("enx3a406b1307a9")
+	iface, err := net.InterfaceByName("eth0")
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -3,7 +3,9 @@ package handlers
 import (
 	"encoding/binary"
 	"log"
+	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/alecthomas/repr"
 	"github.com/atomic77/nethadone/database"
@@ -56,19 +58,11 @@ func Rules(c *fiber.Ctx) error {
 		DestIpAddr: "192,168,0,14",
 		DelayMs:    10,
 	}
-	var key, val uint64
-	vals := make(map[uint64]uint64, 1)
-	log.Println("tcfilter objs ref", repr.String(BpfCtx.TcFilterObjs))
-	if BpfCtx.TcFilterObjs != nil {
-		entries := BpfCtx.TcFilterObjs.Map.Iterate()
-		for entries.Next(&key, &val) {
-			vals[key] = val
-		}
-	}
+
+	bl := getBandwidthList(true)
 
 	return c.Render("rules", fiber.Map{
-		"FiltParams": fparams,
-		"MapValues":  vals,
+		"BandwidthList": bl,
 	}, "layouts/base")
 }
 
@@ -101,9 +95,23 @@ type BandwidthList struct {
 	SrcIpAddr  net.IP
 	DestIpAddr net.IP
 	Bytes      uint64
+	ProbDomain string
+	GlobName   string
 }
 
-func Bandwidth(c *fiber.Ctx) error {
+func getMatchingGlobGroup(dom string) *models.GlobGroup {
+	// TODO Move this somewhere more appropriate
+	globs := database.GetGlobs()
+	for _, g := range globs {
+		matched, _ := filepath.Match(g.Glob, dom)
+		if matched {
+			return &g
+		}
+	}
+	return nil
+}
+
+func getBandwidthList(globsOnly bool) []BandwidthList {
 
 	var key, val uint64
 	vals := make([]BandwidthList, 0)
@@ -120,20 +128,67 @@ func Bandwidth(c *fiber.Ctx) error {
 			binary.BigEndian.PutUint32(srcip, src)
 			destip := make(net.IP, 4)
 			binary.BigEndian.PutUint32(destip, dest)
+			dom := database.GetDomainForIP(destip.String())
+			gg := getMatchingGlobGroup(dom)
 			bl := BandwidthList{
 				SrcIpAddr:  srcip,
 				DestIpAddr: destip,
 				Bytes:      val,
+				ProbDomain: dom,
 			}
-			vals = append(vals, bl)
+			if gg != nil {
+				bl.GlobName = gg.Name
+				if globsOnly {
+					vals = append(vals, bl)
+				}
+			}
+			if !globsOnly {
+				vals = append(vals, bl)
+			}
 		}
 	}
+	return vals
 
+}
+func Bandwidth(c *fiber.Ctx) error {
+	bl := getBandwidthList(false)
 	return c.Render("bandwidth", fiber.Map{
-		"BandwidthList": vals,
+		"BandwidthList": bl,
 	}, "layouts/base")
 }
 
+func RuleChange(c *fiber.Ctx) error {
+
+	delay, err := strconv.Atoi(utils.CopyString(c.FormValue("delay")))
+	if err != nil {
+		return c.JSON(fiber.Map{
+			"status": "Failed to parse delay value",
+			"err":    err,
+			"val":    c.FormValue("delay"),
+		})
+	}
+	bl := getBandwidthList(true)
+
+	fparams := make([]FiltParams, 0)
+
+	for _, b := range bl {
+		log.Println("dest ip", b.DestIpAddr)
+		dip := strings.Join(strings.Split(b.DestIpAddr.String(), "."), ",")
+		log.Println("dip", dip)
+		fp := FiltParams{
+			// Ignoring src for now
+			SrcIpAddr:  "",
+			DestIpAddr: dip,
+			// TODO make this variable based on amount
+			DelayMs: delay,
+		}
+		fparams = append(fparams, fp)
+	}
+	redeployBpf(&fparams)
+	return c.Redirect("/rulesets")
+}
+
+/*
 func RuleChange(c *fiber.Ctx) error {
 
 	delay, err := strconv.Atoi(utils.CopyString(c.FormValue("delay")))
@@ -153,10 +208,8 @@ func RuleChange(c *fiber.Ctx) error {
 	log.Println(fparams)
 	redeployBpf(&fparams)
 	return c.Redirect("/rulesets")
-	// return c.JSON(fiber.Map{
-	// 	"status": "OK",
-	// })
 }
+*/
 
 func Devices(c *fiber.Ctx) error {
 	// Render index

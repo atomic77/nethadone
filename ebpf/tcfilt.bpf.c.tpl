@@ -31,7 +31,7 @@ struct {
     __uint(type, BPF_MAP_TYPE_HASH);
     __type(key, __u64);
     __type(value, __u64);
-    __uint(max_entries, 255);
+    __uint(max_entries, 10000);
 } src_dest_bytes SEC(".maps");
 
 SEC("tc")
@@ -58,39 +58,19 @@ int tc_ingress(struct __sk_buff *skb)
     if ((void *)(l3 + 1) > data_end)
         return TC_ACT_OK;
 
-    // Basic working:
-    // sudo tc filter add dev enp0s3 egress bpf direct-action obj tcfilt.o sec tc
-    //
-    // In order to make use of the tstamp marker for packets, need to switch interface
-    // to fair queuing mode:
-    // sudo tc qdisc replace dev enp0s3 root fq
-    // Then add filter as usual:
-    // sudo tc filter add dev enp0s3 egress bpf direct-action obj tcfilt.o sec tc
-    
-
-    // if (bpf_ntohs(l3->tot_len) > 300) {
-    // && l3->daddr == IP_ADDRESS({{ .DestIpAddr}})
-    if (
-      l3->saddr == IP_ADDRESS({{ .SrcIpAddr}})
-      || l3->daddr == IP_ADDRESS({{ .SrcIpAddr}})
-    ) {
-     /*__bpf_vprintk(
-        "Got packet: tot_len: %d, ttl: %d, saddr: %pI4, daddr: %pI4, tstmp: %lld, cls: %d", 
-        bpf_ntohs(l3->tot_len), 
-        l3->ttl, &l3->saddr, &l3->daddr, skb->tstamp, skb->tc_classid
-      );
-      */
-      skb->tstamp = skb->tstamp + ({{ .DelayMs }} * MILLIS);
-      __u64 key = ((__u64) l3->saddr) << 32 | ((__u64)l3->daddr);
-      __u64 val = bpf_ntohs(l3->tot_len);
-      __u64 *p = bpf_map_lookup_elem(&src_dest_bytes, &key);
-      if (p != 0) {
-        val = *p + bpf_ntohs(l3->tot_len);
-      } 
-      bpf_map_update_elem(&src_dest_bytes, &key, &val, BPF_ANY);
+    __u64 key = ((__u64) l3->saddr) << 32 | ((__u64)l3->daddr);
+    __u64 val = bpf_ntohs(l3->tot_len);
+    __u64 *p = bpf_map_lookup_elem(&src_dest_bytes, &key);
+    if (p != 0) {
+      val = *p + bpf_ntohs(l3->tot_len);
+    } 
+    bpf_map_update_elem(&src_dest_bytes, &key, &val, BPF_ANY);
       
+    {{ range .FiltParams }}
+    if (l3->daddr == IP_ADDRESS({{ .DestIpAddr }})) {
+      skb->tstamp = skb->tstamp + ({{ .DelayMs }} * MILLIS);
     }
-
+    {{ end }}
 
     return TC_ACT_OK;
 }

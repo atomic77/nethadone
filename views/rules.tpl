@@ -1,33 +1,32 @@
 <div class="p-3 row">
 
-    <h3>Applied rulesets</h3>
+    <h3>Glob Matches</h3>
 
-    <table class="table">
+    <table class="table" id="glob-usage">
         <thead>
             <tr>
                 <th scope="col">#</th>
                 <th scope="col">SrcIp</th>
                 <th scope="col">DestIp</th>
-                <th scope="col">Delay</th>
+                <th scope="col">Likely Domain</th>
+                <th scope="col">Glob Group</th>
+                <th scope="col">Bytes</th>
             </tr>
         </thead>
         <tbody>
-            {{range .FiltParams}}
+            {{ range .BandwidthList }}
             <tr>
                 <th scope="row"></th>
                 <td>{{ .SrcIpAddr }}</td>
                 <td>{{ .DestIpAddr }}</td>
-                <td>{{ .DelayMs }}</td>
+                <td>{{ .ProbDomain }}</td>
+                <td>{{ .GlobName }}</td>
+                <td>{{ .Bytes }}</td>
             </tr>
             {{end}}
 
         </tbody>
     </table>
-
-    <h3> Map contents: </h3>
-    {{ range $key, $val := .MapValues }}
-        <p>k,v: {{ $key }}, {{ $val }}</p>
-    {{ end }}
 
     <form action="/rulesets/change" method="POST" class="p-3">
         <div class="row">
