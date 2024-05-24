@@ -17,8 +17,8 @@ apt-get install -y apt-transport-https ca-certificates curl clang llvm jq libelf
 
 Replace qdisc for interface w/ FQ root. Unsure why the initial creation of clsact
 ```bash
-sudo tc qdisc add dev enx3a406b1307a9 clsact
-sudo tc qdisc replace dev enx3a406b1307a9 root fq
+sudo tc qdisc add dev eth0 clsact
+sudo tc qdisc replace dev eth0 root fq
 ```
 
 Note:
@@ -37,6 +37,7 @@ qdisc clsact ffff: dev enx3a406b1307a9 parent ffff:fff1
 build, attach:
 ```bash
 clang -g -O2 -I/usr/include/aarch64-linux-gnu -Wall -target bpf -c tcfilt.bpf.c -o tcfilt.o
+clang -g -O2 -Wall -target bpf -c tcfilt.bpf.c -o tcfilt.o
 sudo tc filter add dev enp0s3 egress bpf direct-action obj tcfilt.o sec tc
 ```
 
@@ -147,3 +148,19 @@ To remove:
 sudo tc filter del dev enp0s3 ingress
 sudo tc filter del dev enp0s3 egress
 ```
+
+
+## Docker to VM 
+
+Can build docker image:
+```bash
+docker buildx build -t atomic77/nethadone:latest .
+```
+
+Then use [d2vm](https://github.com/linka-cloud/d2vm) to convert to a qcow image which can then be used with full kernel virtualization:
+
+```bash
+sudo d2vm convert atomic77/nethadone -o nethadone.qcow2 -p 1234
+d2vm run qemu --networking bridge,virbr0 --mem 4096 --cpus 4 ../nethadone.qcow2 
+```
+

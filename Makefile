@@ -1,5 +1,5 @@
 project_name = nethadone
-image_name = gofiber:latest
+image_name = atomic77/nethadone:latest
 
 help: ## This help dialog.
 	@grep -F -h "##" $(MAKEFILE_LIST) | grep -F -v fgrep | sed -e 's/\\$$//' | sed -e 's/##//'
