@@ -24,6 +24,37 @@ $(BPF_OBJ): %.o: %.c vmlinux.h
 vmlinux.h:
 	bpftool btf dump file /sys/kernel/btf/vmlinux format c > vmlinux.h		
 
+
+
+rtarg = pkt
+direction = ingress
+#rtarg = flat
+dev = eth1
+build: 
+	clang -g -O2 -I/usr/include/aarch64-linux-gnu -Wall -target bpf -c ${rtarg}.bpf.c -o ${rtarg}.o
+rebuild:
+	tc filter del dev ${dev} ${direction}
+	clang -g -O2 -I/usr/include/aarch64-linux-gnu -Wall -target bpf -c ${rtarg}.bpf.c -o ${rtarg}.o
+	tc filter add dev ${dev} ${direction} bpf direct-action obj ${rtarg}.o sec tc
+
+rebuild-all:
+	tc filter del dev eth0 ingress
+	tc filter del dev eth1 ingress
+	tc filter del dev eth0 egress
+	tc filter del dev eth1 egress
+	clang -g -O2 -I/usr/include/aarch64-linux-gnu -Wall -target bpf -c ${rtarg}.bpf.c -o ${rtarg}.o
+	tc filter add dev eth0 ingress bpf direct-action obj ${rtarg}.o sec tc
+	tc filter add dev eth1 ingress bpf direct-action obj ${rtarg}.o sec tc
+	tc filter add dev eth0 egress bpf direct-action obj ${rtarg}.o sec tc
+	tc filter add dev eth1 egress bpf direct-action obj ${rtarg}.o sec tc
+
+detach-all:
+	tc filter del dev eth0 ingress
+	tc filter del dev eth1 ingress
+	tc filter del dev eth0 egress
+	tc filter del dev eth1 egress
+
+
 clean:
 	# - bpftool net detach xdp dev lo
 	# - bpftool net detach xdp dev docker0

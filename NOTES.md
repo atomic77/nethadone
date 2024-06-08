@@ -164,3 +164,18 @@ sudo d2vm convert atomic77/nethadone -o nethadone.qcow2 -p 1234
 d2vm run qemu --networking bridge,virbr0 --mem 4096 --cpus 4 ../nethadone.qcow2 
 ```
 
+On Windows with VirtualBox, storage type needs to be AHCI
+
+## Temporarily enabling ip forwarding on box
+
+```bash
+iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
+sysctl net.ipv4.ip_forward=1
+```
+
+On client:
+
+```bash
+ip route add default via 192.168.171.128
+```
+

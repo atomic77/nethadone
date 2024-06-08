@@ -96,10 +96,12 @@ func compileBpf(tplfile string, target string, fparams *[]FiltParams) {
 	}
 
 	out, err := exec.Command(
-		"su", "atomic", "-c",
+		// "su", "atomic", "-c",
 		// "clang", "-g", "-O2", "-I/usr/include/aarch64-linux-gnu", "-Wall", "-target", "bpf",
 		// "-c", file, "-o", target,
-		`clang -g -O2 -I/usr/include/aarch64-linux-gnu -Wall -target bpf -c `+cfile+" -o "+target,
+		// `clang -g -O2 -I/usr/include/aarch64-linux-gnu -Wall -target bpf -c ` + cfile + " -o " + target,
+		"clang", "-g", "-O2", "-I/usr/include/aarch64-linux-gnu", "-Wall", "-target", "bpf",
+		"-c", cfile, "-o", target,
 	).CombinedOutput()
 	if err != nil {
 		log.Fatal("failed to compile ebpf prog, out: ", string(out), " err: ", err)
@@ -155,7 +157,7 @@ func redeployBpf(fparams *[]FiltParams) {
 
 	tcnl := getTcnl()
 
-	iface, err := net.InterfaceByName("eth0")
+	iface, err := net.InterfaceByName("eth1")
 	if err != nil {
 		log.Fatal(err)
 	}
