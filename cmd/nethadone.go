@@ -11,11 +11,11 @@ import (
 )
 
 func main() {
-	// Create a new engine
 
-	// Or from an embedded system
-	// See github.com/gofiber/embed for examples
-	// engine := html.NewFileSystem(http.Dir("./views", ".html"))
+	// ifname := flag.String("interface", "eth0", "Interface to attach to")
+	// dir := flag.String("direction", "egress", "Ingress or Egress")
+
+	// flag.Parse()
 
 	// Pass the engine to the Views
 	engine := html.New("./views", ".tpl")
@@ -23,6 +23,7 @@ func main() {
 		Views: engine,
 	})
 	database.Connect()
+	handlers.InitializeBpf("eth0")
 
 	// Middleware
 	// app.Use(recover.New())

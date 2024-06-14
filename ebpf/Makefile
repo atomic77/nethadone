@@ -26,7 +26,7 @@ vmlinux.h:
 
 
 
-rtarg = pkt
+rtarg = dnspkt
 direction = ingress
 #rtarg = flat
 dev = eth1
@@ -62,3 +62,6 @@ clean:
 	- rm $(BPF_OBJ)
 	# - tc filter delete dev docker0 parent ffff:
 
+
+bpfgen:
+	go generate ./...

@@ -11,7 +11,7 @@ import (
 	"os"
 
 	"github.com/alecthomas/repr"
-	"github.com/cilium/ebpf"
+	"github.com/atomic77/nethadone/handlers"
 	"github.com/cilium/ebpf/perf"
 	tc "github.com/florianl/go-tc"
 	"github.com/florianl/go-tc/core"
@@ -21,6 +21,7 @@ import (
 	"github.com/mdlayher/netlink"
 )
 
+/*
 type bpfObj struct {
 	Map  *ebpf.Map     `ebpf:"dns_arr"`
 	Prog *ebpf.Program `ebpf:"handle_udp"`
@@ -32,6 +33,7 @@ func (objs *bpfObj) Close() error {
 	}
 	return nil
 }
+*/
 
 func main() {
 	// Cli tool to use pure go for manipulating TC tables
@@ -84,17 +86,9 @@ func main() {
 		}
 	}
 
-	spec, err := ebpf.LoadCollectionSpec("ebpf/pkt.o")
-	if err != nil {
-		log.Fatal("failed to load spec ", err)
-	}
+	handlers.InitializeBpf(*ifname)
 
-	var objs bpfObj
-	if err := spec.LoadAndAssign(&objs, nil); err != nil {
-		log.Fatal("failed to load and assign prog spec", err)
-	}
-
-	fd := uint32(objs.Prog.FD())
+	fd := uint32(handlers.BpfCtx.DnspktObjs.HandleUdp.FD())
 	flags := uint32(0x1)
 
 	dirFlag := tc.HandleMinIngress
@@ -125,7 +119,7 @@ func main() {
 		return
 	}
 
-	reader, err := perf.NewReader(objs.Map, 4096) // what is a reasonable buffer size ??
+	reader, err := perf.NewReader(handlers.BpfCtx.DnspktObjs.DnsArr, 4096) // what is a reasonable buffer size ??
 	if err != nil {
 		log.Fatalln("failed to initialize perf buffer reader ", err)
 	}

@@ -184,7 +184,7 @@ func RuleChange(c *fiber.Ctx) error {
 		}
 		fparams = append(fparams, fp)
 	}
-	redeployBpf(&fparams)
+	redeployTcFilt(&fparams)
 	return c.Redirect("/rulesets")
 }
 

@@ -1,8 +1,6 @@
 package database
 
 import (
-	"log"
-
 	"github.com/atomic77/nethadone/models"
 )
 
@@ -19,7 +17,7 @@ func GetDomainForIP(ip string) string {
 	`
 	err := dnsDb.Get(&domain, sql, ip)
 	if err != nil {
-		log.Println("failed to query dns cache ", err)
+		// log.Println("failed to query dns cache ", err)
 		return ""
 	}
 	return domain
@@ -36,7 +34,7 @@ func GetIPsMatchingGlob(g *models.GlobGroup) []string {
 	`
 	err := dnsDb.Select(&ips, sql, g.Glob)
 	if err != nil {
-		log.Println("failed to query dns cache ", err)
+		// log.Println("failed to query dns cache ", err)
 		return nil
 	}
 	return ips

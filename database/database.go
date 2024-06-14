@@ -2,6 +2,7 @@ package database
 
 import (
 	"log"
+	"net"
 
 	"github.com/atomic77/nethadone/models"
 	"github.com/jmoiron/sqlx"
@@ -9,7 +10,6 @@ import (
 )
 
 var (
-	// db  *sql.DB
 	dnsDb *sqlx.DB
 	cfgDb *sqlx.DB
 )
@@ -30,11 +30,14 @@ func Connect() {
 			"group" text
 		);`,
 	}
-	dnsDb, err = sqlx.Open("sqlite", "/tmp/dns.db?mode=ro")
+	dnsDb, err = sqlx.Open("sqlite", "/tmp/dns.db?mode=rw")
 	if err != nil {
 		log.Fatalln("Could not open sqlite DNS db")
 	}
 	log.Println("Connected to DNS probe database")
+	dnsDb.MustExec(`CREATE TABLE IF NOT EXISTS dns (
+		saddr text, daddr text, dport int, domain text, tstamp timestamp         
+	);`)
 
 	cfgDb, err = sqlx.Open("sqlite", "/tmp/cfg.db?mode=rw")
 	if err != nil {
@@ -44,7 +47,6 @@ func Connect() {
 	for _, t := range cfgSchema {
 		cfgDb.MustExec(t)
 	}
-
 }
 
 func GetGlobs() []models.GlobGroup {
@@ -59,4 +61,17 @@ func AddGlob(g *models.GlobGroup) error {
 			VALUES (:name, :description, :glob, :device)`
 	_, err := cfgDb.NamedExec(sql, g)
 	return err
+}
+
+func AddDns(domain string, ipaddr *net.IP) error {
+
+	sql := `INSERT INTO dns VALUES (:saddr, :daddr, :dport, :domain, datetime())`
+	_, err := dnsDb.NamedExec(sql, map[string]interface{}{
+		"saddr":  "0.0.0.0",
+		"daddr":  ipaddr.String(),
+		"dport":  0,
+		"domain": domain,
+	})
+	return err
+
 }

@@ -53,3 +53,9 @@ stop: ## Stop the container
 start: ## Start the container
 	docker start $(project_name)
 
+### BPF related
+clean-tc:
+	tc filter del dev eth0 ingress
+	tc filter del dev eth1 ingress
+	tc filter del dev eth0 egress
+	tc filter del dev eth1 egress

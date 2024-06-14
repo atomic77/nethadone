@@ -1,13 +1,9 @@
 #!/usr/bin/env python
 # @lint-avoid-python-3-compatibility-imports
 #
-# Adapted from tcpconnect.py from bcc/tools. Tried in vain for a while to get
-# a DNS probe working with libbpf on the r1plus, but alas this will have to 
-# do for now. Makes use of a small sqlite db that serves as the DNS result cache
-# that will be used by the web interface for adjusting the TC ebpf programs
+# Adapted from tcpconnect.py from bcc/tools. No longer necessary now that
+# pkt.bpf.c is working. 
 
-# At some point investigate whether we can get fentry/fexit working which may be less 
-# painful to work with than kprobe.
 
 from __future__ import print_function
 from bcc import BPF
