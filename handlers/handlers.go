@@ -7,9 +7,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/alecthomas/repr"
 	"github.com/atomic77/nethadone/database"
 	"github.com/atomic77/nethadone/models"
+	"github.com/florianl/go-tc"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/utils"
 	"github.com/vishvananda/netlink"
@@ -115,9 +115,9 @@ func getBandwidthList(globsOnly bool) []BandwidthList {
 
 	var key, val uint64
 	vals := make([]BandwidthList, 0)
-	log.Println("tcfilter objs ref", repr.String(BpfCtx.TcFilterObjs))
-	if BpfCtx.TcFilterObjs != nil {
-		entries := BpfCtx.TcFilterObjs.Map.Iterate()
+	if BpfCtx.TrafficmonObjs != nil {
+		// entries := BpfCtx.TcFilterObjs.Map.Iterate()
+		entries := BpfCtx.TrafficmonObjs.trafficmonMaps.SrcDestBytes.Iterate()
 		for entries.Next(&key, &val) {
 			// net.IP
 			b := make([]byte, 8)
@@ -184,7 +184,13 @@ func RuleChange(c *fiber.Ctx) error {
 		}
 		fparams = append(fparams, fp)
 	}
-	redeployTcFilt(&fparams)
+	// redeployTcFilt(&fparams)
+	rebuildBpf(
+		"ebpf/throttle.bpf.c.tpl",
+		"ebpf/throttle.bpf.c",
+		&fparams,
+	)
+	reattachThrottler("eth0", tc.HandleMinEgress)
 	return c.Redirect("/rulesets")
 }
 

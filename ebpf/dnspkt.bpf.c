@@ -57,7 +57,7 @@ struct eth_hdr {
 
 
 SEC("tc")
-int handle_udp(struct __sk_buff *skb)
+int udp_dns_sniff(struct __sk_buff *skb)
 {
 	void *data = (void *)(long)skb->data;
 	void *data_end = (void *)(long)skb->data_end;

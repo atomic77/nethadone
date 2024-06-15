@@ -20,7 +20,10 @@ import (
 	"github.com/mdlayher/netlink"
 )
 
+// TODO These generated bpf2go files should probably go somewhere else
 //go:generate go run github.com/cilium/ebpf/cmd/bpf2go dnspkt ../ebpf/dnspkt.bpf.c - -O2  -Wall -Werror -Wno-address-of-packed-member
+//go:generate go run github.com/cilium/ebpf/cmd/bpf2go trafficmon ../ebpf/trafficmon.bpf.c - -O2  -Wall -Werror -Wno-address-of-packed-member
+//go:generate go run github.com/cilium/ebpf/cmd/bpf2go throttle ../ebpf/throttle.bpf.c - -O2  -Wall -Werror -Wno-address-of-packed-member
 
 type filtObjs struct {
 	// TODO We are still dependent on direct clang compilation for the tcfilt bpf
@@ -29,18 +32,19 @@ type filtObjs struct {
 	Prog *ebpf.Program `ebpf:"tc_ingress"`
 }
 
-// Need to better understand why this is necessary to get the
-// context to be shareable across calls
 type BpfContext struct {
-	Tcnl         *tc.Tc
+	Tcnl *tc.Tc
+	// TODO Remove old TcFilterObjs when this is fully moved to bpf2go
 	TcFilterObjs *filtObjs
-	DnspktObjs   *dnspktObjects
-	// DnsFilterObjs *dnsObjs
+	// bpf2go generated
+	DnspktObjs     *dnspktObjects
+	TrafficmonObjs *trafficmonObjects
+	ThrottleObjs   *throttleObjects
 }
 
 var BpfCtx BpfContext
 
-// Comma separated, eg. 192,168,0,14
+// IPaddr is comma separated due to use of IP_ADDRESS macro in bpf code, eg. 192,168,0,14
 type FiltParams struct {
 	SrcIpAddr  string
 	DestIpAddr string
@@ -61,18 +65,124 @@ func InitializeBpf(ifname string) {
 		log.Fatalln("failed to load DNS sniffer bpf program ", err)
 	}
 
-	log.Println("Deploying basic bandwidth monitor")
-	fp := make([]FiltParams, 0)
-	// fp[0] = FiltParams{
-	// 	SrcIpAddr:  "127,0,0,1",
-	// 	DestIpAddr: "127,0,0,1",
-	// 	DelayMs:    0,
-	// }
-	redeployTcFilt(&fp)
+	BpfCtx.TrafficmonObjs = &trafficmonObjects{}
+	err = loadTrafficmonObjects(BpfCtx.TrafficmonObjs, nil)
+	if err != nil {
+		log.Fatalln("failed to load traffic monitor bpf program ", err)
+	}
+
 	attachDnsSniffer("eth0", tc.HandleMinEgress)
 	attachDnsSniffer("eth1", tc.HandleMinEgress)
 	attachDnsSniffer("eth0", tc.HandleMinIngress)
 	attachDnsSniffer("eth1", tc.HandleMinIngress)
+	attachTrafficMonitor("eth0", tc.HandleMinIngress)
+	attachTrafficMonitor("eth0", tc.HandleMinEgress)
+}
+
+func rebuildBpf(tplfile string, target string, fparams *[]FiltParams) {
+	log.Println("Rebuilding with ", len(*fparams), " throttle targets")
+
+	f, err := os.Create(target)
+	if err != nil {
+		log.Fatal("failed to create rendered file ", err)
+	}
+	tpl := template.Must(template.ParseFiles(tplfile))
+	type fdata struct {
+		FiltParams *[]FiltParams
+	}
+	err = tpl.Execute(f, fdata{FiltParams: fparams})
+	if err != nil {
+		log.Fatal("failed to render file ", err)
+	}
+	// FIXME There surely must be a better way of doing this dynamically
+	cmd := exec.Command(
+		"go", "run", "github.com/cilium/ebpf/cmd/bpf2go",
+		"-go-package", "handlers",
+		"throttle",
+		"../ebpf/throttle.bpf.c", "-O2", "-Wall", "-Werror",
+		"-Wno-address-of-packed-member",
+	)
+	cmd.Dir = "handlers/"
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		log.Fatal("failed to run bpf2go, out: ", string(out), " err: ", err)
+	}
+	log.Println("Compilation output: ", string(out))
+
+}
+
+func cleanupThrottler(iface *net.Interface, direction uint32) {
+	// Clean up any existing filters prior to rebuilding and attaching
+	tcnl := getTcnl()
+	msg := tc.Msg{
+		Ifindex: uint32(iface.Index),
+		Parent:  core.BuildHandle(tc.HandleRoot, direction),
+		Info:    0x300,
+	}
+	tfilt, err := tcnl.Filter().Get(&msg)
+	if err != nil {
+		log.Fatal("could not get tc filter info ", err)
+	}
+	for _, tobj := range tfilt {
+		if tobj.BPF != nil && tobj.BPF.Name != nil && *tobj.BPF.Name == "throttle" {
+			log.Println("found prior throttler filter, removing")
+			repr.Println(tobj)
+			tcnl.Filter().Delete(&tobj)
+		}
+	}
+	if BpfCtx.ThrottleObjs != nil {
+		log.Println("Found existing Throttler BPF; closing")
+		BpfCtx.ThrottleObjs.Close()
+	}
+
+}
+
+func reattachThrottler(ifname string, direction uint32) {
+
+	log.Println("(Re)attaching throttler BPF to if ", ifname, " direction ", direction)
+
+	tcnl := getTcnl()
+	iface, err := net.InterfaceByName(ifname)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	cleanupThrottler(iface, direction)
+
+	BpfCtx.ThrottleObjs = &throttleObjects{}
+	err = loadThrottleObjects(BpfCtx.ThrottleObjs, nil)
+	if err != nil {
+		log.Fatalln("failed to reload throttling bpf program ", err)
+	}
+
+	fd := uint32(BpfCtx.ThrottleObjs.Throttle.FD())
+	flags := uint32(0x1)
+
+	// Create a tc/filter object that will attach the eBPF program to the qdisc/clsact.
+	bpfName := "throttle"
+	filter := tc.Object{
+		Msg: tc.Msg{
+			Family:  unix.AF_UNSPEC,
+			Ifindex: uint32(iface.Index),
+			Handle:  0,
+			Parent:  core.BuildHandle(tc.HandleRoot, direction),
+			Info:    0x300,
+		},
+		Attribute: tc.Attribute{
+			Kind: "bpf",
+			BPF: &tc.Bpf{
+				FD:    &fd,
+				Flags: &flags,
+				Name:  &bpfName,
+			},
+		},
+	}
+	log.Println("Created filter object: ", repr.String(filter))
+	// Attach the tc/filter object with the eBPF program to the qdisc/clsact.
+	if err := tcnl.Filter().Add(&filter); err != nil {
+		log.Fatalln("could not attach filter for DNS sniffer", err)
+		return
+	}
 }
 
 func compileBpf(tplfile string, target string, fparams *[]FiltParams) {
@@ -152,10 +262,44 @@ func getQdiscInfo() {
 	*/
 }
 
+func attachTrafficMonitor(ifname string, direction uint32) {
+
+	log.Println("Attaching bandwidth monitor BPF to if ", ifname, " direction ", direction)
+
+	tcnl := getTcnl()
+	iface, err := net.InterfaceByName(ifname)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fd := uint32(BpfCtx.TrafficmonObjs.TrafficMon.FD())
+	flags := uint32(0x1)
+
+	// Create a tc/filter object that will attach the eBPF program to the qdisc/clsact.
+	filter := tc.Object{
+		Msg: tc.Msg{
+			Family:  unix.AF_UNSPEC,
+			Ifindex: uint32(iface.Index),
+			Handle:  0,
+			Parent:  core.BuildHandle(tc.HandleRoot, direction),
+			Info:    0x300,
+		},
+		Attribute: tc.Attribute{
+			Kind: "bpf",
+			BPF: &tc.Bpf{
+				FD:    &fd,
+				Flags: &flags,
+			},
+		},
+	}
+	// Attach the tc/filter object with the eBPF program to the qdisc/clsact.
+	if err := tcnl.Filter().Add(&filter); err != nil {
+		log.Fatalln("could not attach filter for DNS sniffer", err)
+		return
+	}
+}
+
 func attachDnsSniffer(ifname string, direction uint32) {
 
-	// dirFlag := tc.HandleMinEgress
-	// dirFlag := tc.HandleMinIngress
 	log.Println("Attaching DNS sniffer BPF to if ", ifname, " direction ", direction)
 
 	tcnl := getTcnl()
@@ -163,7 +307,7 @@ func attachDnsSniffer(ifname string, direction uint32) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	fd := uint32(BpfCtx.DnspktObjs.HandleUdp.FD())
+	fd := uint32(BpfCtx.DnspktObjs.UdpDnsSniff.FD())
 	flags := uint32(0x1)
 
 	// Create a tc/filter object that will attach the eBPF program to the qdisc/clsact.

@@ -58,7 +58,7 @@ type dnspktSpecs struct {
 //
 // It can be passed ebpf.CollectionSpec.Assign.
 type dnspktProgramSpecs struct {
-	HandleUdp *ebpf.ProgramSpec `ebpf:"handle_udp"`
+	UdpDnsSniff *ebpf.ProgramSpec `ebpf:"udp_dns_sniff"`
 }
 
 // dnspktMapSpecs contains maps before they are loaded into the kernel.
@@ -103,12 +103,12 @@ func (m *dnspktMaps) Close() error {
 //
 // It can be passed to loadDnspktObjects or ebpf.CollectionSpec.LoadAndAssign.
 type dnspktPrograms struct {
-	HandleUdp *ebpf.Program `ebpf:"handle_udp"`
+	UdpDnsSniff *ebpf.Program `ebpf:"udp_dns_sniff"`
 }
 
 func (p *dnspktPrograms) Close() error {
 	return _DnspktClose(
-		p.HandleUdp,
+		p.UdpDnsSniff,
 	)
 }
 
