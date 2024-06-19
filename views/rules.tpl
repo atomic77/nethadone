@@ -47,7 +47,7 @@
 
             <div class="col">
                 <div class="form-floating mb-3">
-                    <input type="number" class="form-control" placeholder="50" id="delay" name="delay" />
+                    <input type="number" class="form-control" value="500"  id="delay" name="delay" />
                     <label for="delay" class="form-label">Delay (ms)</label>
                 </div>
             </div>

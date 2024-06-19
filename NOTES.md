@@ -179,3 +179,14 @@ On client:
 ip route add default via 192.168.171.128
 ```
 
+## Prometheus Queries
+
+Top IP addr endpoints:
+```
+topk(10, rate(ip_pair_vic_bytes_total[1m]))
+```
+
+Aggregated bandwidth over 5m for glob groups:
+```
+sum by (glob) (rate(ip_pair_vic_bytes_total{glob!=""}[5m]))
+```

@@ -3,6 +3,7 @@ package database
 import (
 	"log"
 	"net"
+	"os"
 
 	"github.com/atomic77/nethadone/models"
 	"github.com/jmoiron/sqlx"
@@ -30,7 +31,9 @@ func Connect() {
 			"group" text
 		);`,
 	}
-	dnsDb, err = sqlx.Open("sqlite", "/tmp/dns.db?mode=rw")
+
+	home, _ := os.UserHomeDir()
+	dnsDb, err = sqlx.Open("sqlite", home+"/dns.db?mode=rw")
 	if err != nil {
 		log.Fatalln("Could not open sqlite DNS db")
 	}
@@ -39,7 +42,7 @@ func Connect() {
 		saddr text, daddr text, dport int, domain text, tstamp timestamp         
 	);`)
 
-	cfgDb, err = sqlx.Open("sqlite", "/tmp/cfg.db?mode=rw")
+	cfgDb, err = sqlx.Open("sqlite", home+"/cfg.db?mode=rw")
 	if err != nil {
 		log.Fatalln("Could not open sqlite cfg db")
 	}

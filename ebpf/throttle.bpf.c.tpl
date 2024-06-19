@@ -78,15 +78,14 @@ int throttle(struct __sk_buff *skb)
 
     increment_scanned();
 	
-    if (l3->daddr == IP_ADDRESS(192,168,0,176)) {
-      skb->tstamp = skb->tstamp + (500 * MILLIS);
-      increment_throttled();
-    }
-    
     {{ range .FiltParams }}
     if (l3->daddr == IP_ADDRESS({{ .DestIpAddr }})) {
       skb->tstamp = skb->tstamp + ({{ .DelayMs }} * MILLIS);
       increment_throttled();
+      /*
+      char fmt[] =  "throttling packet at {{ .DelayMs }} ms"; 
+      bpf_trace_printk(fmt, sizeof(fmt));
+      */
     }
     {{ end }}
 

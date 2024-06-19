@@ -3,10 +3,12 @@ package handlers
 import (
 	"encoding/binary"
 	"log"
+	"net/http"
 	"path/filepath"
 	"strconv"
 	"strings"
 
+	"github.com/VictoriaMetrics/metrics"
 	"github.com/atomic77/nethadone/database"
 	"github.com/atomic77/nethadone/models"
 	"github.com/florianl/go-tc"
@@ -148,8 +150,8 @@ func getBandwidthList(globsOnly bool) []BandwidthList {
 		}
 	}
 	return vals
-
 }
+
 func Bandwidth(c *fiber.Ctx) error {
 	bl := getBandwidthList(false)
 	return c.Render("bandwidth", fiber.Map{
@@ -184,7 +186,14 @@ func RuleChange(c *fiber.Ctx) error {
 		}
 		fparams = append(fparams, fp)
 	}
-	// redeployTcFilt(&fparams)
+	// TODO Testing - inject local endpoint for testing
+
+	fplocal := FiltParams{
+		SrcIpAddr: "", DestIpAddr: "192,168,0,176", DelayMs: delay,
+	}
+	fparams = append(fparams, fplocal)
+
+	// /TESTING
 	rebuildBpf(
 		"ebpf/throttle.bpf.c.tpl",
 		"ebpf/throttle.bpf.c",
@@ -229,6 +238,10 @@ func Devices(c *fiber.Ctx) error {
 			"IPAddr": "192.168.0.2",
 		},
 	}, "layouts/base")
+}
+
+func MetricsHandleFunc(w http.ResponseWriter, req *http.Request) {
+	metrics.WritePrometheus(w, false)
 }
 
 // NotFound returns custom 404 page

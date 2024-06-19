@@ -23,23 +23,26 @@ import (
 // TODO These generated bpf2go files should probably go somewhere else
 //go:generate go run github.com/cilium/ebpf/cmd/bpf2go dnspkt ../ebpf/dnspkt.bpf.c - -O2  -Wall -Werror -Wno-address-of-packed-member
 //go:generate go run github.com/cilium/ebpf/cmd/bpf2go trafficmon ../ebpf/trafficmon.bpf.c - -O2  -Wall -Werror -Wno-address-of-packed-member
-//go:generate go run github.com/cilium/ebpf/cmd/bpf2go throttle ../ebpf/throttle.bpf.c - -O2  -Wall -Werror -Wno-address-of-packed-member
 
-type filtObjs struct {
+/*
+TODO Revisit whether there is another way that bpf2go can used while avoiding the
+embedded bytes that prevent reloading the program in a live running server
+go generate go run github.com/cilium/ebpf/cmd/bpf2go throttle ../ebpf/throttle.bpf.c - -O2  -Wall -Werror -Wno-address-of-packed-member
+*/
+type throttleObjects struct {
 	// TODO We are still dependent on direct clang compilation for the tcfilt bpf
 	// programs; investigate if this can be moved to bpf2go as with the dns sniffer
-	Map  *ebpf.Map     `ebpf:"src_dest_bytes"`
-	Prog *ebpf.Program `ebpf:"tc_ingress"`
+	Map  *ebpf.Map     `ebpf:"throttle_stats"`
+	Prog *ebpf.Program `ebpf:"throttle"`
 }
 
 type BpfContext struct {
 	Tcnl *tc.Tc
-	// TODO Remove old TcFilterObjs when this is fully moved to bpf2go
-	TcFilterObjs *filtObjs
 	// bpf2go generated
 	DnspktObjs     *dnspktObjects
 	TrafficmonObjs *trafficmonObjects
-	ThrottleObjs   *throttleObjects
+	// Custom - avoids go:embed that prevents live-reload
+	ThrottleObjs *throttleObjects
 }
 
 var BpfCtx BpfContext
@@ -51,7 +54,7 @@ type FiltParams struct {
 	DelayMs    int
 }
 
-func (objs *filtObjs) Close() error {
+func (objs *throttleObjects) Close() error {
 	if err := objs.Prog.Close(); err != nil {
 		return err
 	}
@@ -77,6 +80,7 @@ func InitializeBpf(ifname string) {
 	attachDnsSniffer("eth1", tc.HandleMinIngress)
 	attachTrafficMonitor("eth0", tc.HandleMinIngress)
 	attachTrafficMonitor("eth0", tc.HandleMinEgress)
+	reattachThrottler("eth0", tc.HandleMinEgress)
 }
 
 func rebuildBpf(tplfile string, target string, fparams *[]FiltParams) {
@@ -95,17 +99,11 @@ func rebuildBpf(tplfile string, target string, fparams *[]FiltParams) {
 		log.Fatal("failed to render file ", err)
 	}
 	// FIXME There surely must be a better way of doing this dynamically
-	cmd := exec.Command(
-		"go", "run", "github.com/cilium/ebpf/cmd/bpf2go",
-		"-go-package", "handlers",
-		"throttle",
-		"../ebpf/throttle.bpf.c", "-O2", "-Wall", "-Werror",
-		"-Wno-address-of-packed-member",
-	)
-	cmd.Dir = "handlers/"
+	cmd := exec.Command("make", "build-throttler")
+	cmd.Dir = "ebpf/"
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		log.Fatal("failed to run bpf2go, out: ", string(out), " err: ", err)
+		log.Fatal("failed to rebuild throttler eBPF, out: ", string(out), " err: ", err)
 	}
 	log.Println("Compilation output: ", string(out))
 
@@ -132,6 +130,9 @@ func cleanupThrottler(iface *net.Interface, direction uint32) {
 	}
 	if BpfCtx.ThrottleObjs != nil {
 		log.Println("Found existing Throttler BPF; closing")
+		// TODO Confirm what here is necessary
+		BpfCtx.ThrottleObjs.Map.Close()
+		BpfCtx.ThrottleObjs.Prog.Close()
 		BpfCtx.ThrottleObjs.Close()
 	}
 
@@ -150,12 +151,16 @@ func reattachThrottler(ifname string, direction uint32) {
 	cleanupThrottler(iface, direction)
 
 	BpfCtx.ThrottleObjs = &throttleObjects{}
-	err = loadThrottleObjects(BpfCtx.ThrottleObjs, nil)
+	spec, err := ebpf.LoadCollectionSpec("ebpf/throttle.o")
 	if err != nil {
-		log.Fatalln("failed to reload throttling bpf program ", err)
+		log.Fatal("failed to load spec ", err)
 	}
 
-	fd := uint32(BpfCtx.ThrottleObjs.Throttle.FD())
+	if err = spec.LoadAndAssign(BpfCtx.ThrottleObjs, nil); err != nil {
+		log.Fatal("failed to load and assign prog spec", err)
+	}
+
+	fd := uint32(BpfCtx.ThrottleObjs.Prog.FD())
 	flags := uint32(0x1)
 
 	// Create a tc/filter object that will attach the eBPF program to the qdisc/clsact.
@@ -365,6 +370,7 @@ func pollDnsResponses() {
 	}
 }
 
+/*
 func redeployTcFilt(fparams *[]FiltParams) {
 
 	tcnl := getTcnl()
@@ -424,6 +430,7 @@ func redeployTcFilt(fparams *[]FiltParams) {
 		return
 	}
 }
+*/
 
 func getTcnl() *tc.Tc {
 	if BpfCtx.Tcnl != nil {

@@ -55,7 +55,7 @@ start: ## Start the container
 
 ### BPF related
 clean-tc:
-	tc filter del dev eth0 ingress
-	tc filter del dev eth1 ingress
-	tc filter del dev eth0 egress
-	tc filter del dev eth1 egress
+	sudo tc filter del dev eth0 ingress
+	sudo tc filter del dev eth1 ingress
+	sudo tc filter del dev eth0 egress
+	sudo tc filter del dev eth1 egress

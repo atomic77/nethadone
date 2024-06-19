@@ -17,6 +17,10 @@ rm -rf /usr/local/go && tar -C /usr/local -xzf go1.22.3.linux-arm64.tar.gz
 
 echo "export PATH=\$PATH:/usr/local/go/bin" >> /etc/profile
 
+# Local prometheus for metrics collection
+wget https://github.com/prometheus/prometheus/releases/download/v2.52.0/prometheus-2.52.0.linux-amd64.tar.gz
+tar -C /usr/local -xzf prometheus-2.52.0.linux-amd64.tar.gz
+
 # BPFTool if it doesn't install w/ custom kernel
 
 mkdir ~/src

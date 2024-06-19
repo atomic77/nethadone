@@ -6,6 +6,7 @@ import (
 	"github.com/atomic77/nethadone/database"
 	"github.com/atomic77/nethadone/handlers"
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/adaptor"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/template/html/v2"
 )
@@ -22,6 +23,7 @@ func main() {
 	app := fiber.New(fiber.Config{
 		Views: engine,
 	})
+
 	database.Connect()
 	handlers.InitializeBpf("eth0")
 
@@ -37,6 +39,10 @@ func main() {
 	app.Get("/bandwidth", handlers.Bandwidth)
 	app.Get("/globs", handlers.Globs)
 	app.Post("/globs/add", handlers.GlobAdd)
+
+	handlers.InitMetrics()
+	// app.Get("/metrics", adaptor.HTTPHandler(promhttp.Handler()))
+	app.Get("/metrics", adaptor.HTTPHandlerFunc(handlers.MetricsHandleFunc))
 
 	/*
 		Can eventually create groups like so
