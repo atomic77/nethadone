@@ -21,6 +21,12 @@ echo "export PATH=\$PATH:/usr/local/go/bin" >> /etc/profile
 wget https://github.com/prometheus/prometheus/releases/download/v2.52.0/prometheus-2.52.0.linux-amd64.tar.gz
 tar -C /usr/local -xzf prometheus-2.52.0.linux-amd64.tar.gz
 
+cat >> /etc/prometheus.yml << EOF
+  - job_name: "nethadone"
+    static_configs:
+      - targets: ["localhost:3000"]
+EOF
+
 # BPFTool if it doesn't install w/ custom kernel
 
 mkdir ~/src

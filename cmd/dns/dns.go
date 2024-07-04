@@ -86,7 +86,7 @@ func main() {
 		}
 	}
 
-	handlers.InitializeBpf(*ifname)
+	handlers.Initialize(*ifname)
 
 	fd := uint32(handlers.BpfCtx.DnspktObjs.HandleUdp.FD())
 	flags := uint32(0x1)

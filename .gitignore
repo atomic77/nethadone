@@ -1,1 +1,7 @@
 .vscode/
+
+# The throttler is dynamically generated 
+ebpf/throttle.o
+ebpf/throttle.bpf.c
+build/*
+

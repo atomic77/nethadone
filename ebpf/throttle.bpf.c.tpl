@@ -31,7 +31,7 @@ struct {
     __uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
     __type(key, __u32);
     __type(value, __u32);
-    __uint(max_entries, 2);
+    __uint(max_entries, 3);
 } throttle_stats SEC(".maps");
 
 // id = 0 -> packets scanned 
@@ -79,13 +79,12 @@ int throttle(struct __sk_buff *skb)
     increment_scanned();
 	
     {{ range .FiltParams }}
-    if (l3->daddr == IP_ADDRESS({{ .DestIpAddr }})) {
-      skb->tstamp = skb->tstamp + ({{ .DelayMs }} * MILLIS);
-      increment_throttled();
-      /*
-      char fmt[] =  "throttling packet at {{ .DelayMs }} ms"; 
-      bpf_trace_printk(fmt, sizeof(fmt));
-      */
+    if (  
+        l3->saddr == IP_ADDRESS({{ .DestIpAddr }})
+        {{ if .SrcIpAddr }} && l3->daddr == IP_ADDRESS({{ .SrcIpAddr }}) {{ end }}
+    ) {
+        skb->tc_classid = 0x{{ .ClassId }};
+        increment_throttled();
     }
     {{ end }}
 

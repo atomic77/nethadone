@@ -20,6 +20,8 @@ import (
 	"net"
 )
 
+var config Config
+
 func Index(c *fiber.Ctx) error {
 	// Render index
 	return c.Render("index", fiber.Map{
@@ -58,7 +60,7 @@ func Rules(c *fiber.Ctx) error {
 	fparams[0] = FiltParams{
 		SrcIpAddr:  "192,168,0,108",
 		DestIpAddr: "192,168,0,14",
-		DelayMs:    10,
+		ClassId:    10,
 	}
 
 	bl := getBandwidthList(true)
@@ -161,12 +163,12 @@ func Bandwidth(c *fiber.Ctx) error {
 
 func RuleChange(c *fiber.Ctx) error {
 
-	delay, err := strconv.Atoi(utils.CopyString(c.FormValue("delay")))
+	classId, err := strconv.Atoi(utils.CopyString(c.FormValue("classId")))
 	if err != nil {
 		return c.JSON(fiber.Map{
 			"status": "Failed to parse delay value",
 			"err":    err,
-			"val":    c.FormValue("delay"),
+			"val":    c.FormValue("classId"),
 		})
 	}
 	bl := getBandwidthList(true)
@@ -174,22 +176,20 @@ func RuleChange(c *fiber.Ctx) error {
 	fparams := make([]FiltParams, 0)
 
 	for _, b := range bl {
-		log.Println("dest ip", b.DestIpAddr)
+		log.Println("src ip, dest ip", b.SrcIpAddr, b.DestIpAddr)
 		dip := strings.Join(strings.Split(b.DestIpAddr.String(), "."), ",")
-		log.Println("dip", dip)
+		sip := strings.Join(strings.Split(b.SrcIpAddr.String(), "."), ",")
 		fp := FiltParams{
-			// Ignoring src for now
-			SrcIpAddr:  "",
+			SrcIpAddr:  sip,
 			DestIpAddr: dip,
-			// TODO make this variable based on amount
-			DelayMs: delay,
+			ClassId:    classId,
 		}
 		fparams = append(fparams, fp)
 	}
 	// TODO Testing - inject local endpoint for testing
 
 	fplocal := FiltParams{
-		SrcIpAddr: "", DestIpAddr: "192,168,0,176", DelayMs: delay,
+		SrcIpAddr: "", DestIpAddr: "192,168,0,174", ClassId: classId,
 	}
 	fparams = append(fparams, fplocal)
 
@@ -199,34 +199,12 @@ func RuleChange(c *fiber.Ctx) error {
 		"ebpf/throttle.bpf.c",
 		&fparams,
 	)
-	reattachThrottler("eth0", tc.HandleMinEgress)
+	reattachThrottler(config.LanInterface, tc.HandleMinEgress)
 	return c.Redirect("/rulesets")
 }
-
-/*
-func RuleChange(c *fiber.Ctx) error {
-
-	delay, err := strconv.Atoi(utils.CopyString(c.FormValue("delay")))
-	if err != nil {
-		return c.JSON(fiber.Map{
-			"status": "Failed to parse delay value",
-			"err":    err,
-			"val":    c.FormValue("delay"),
-		})
-	}
-	fparams := FiltParams{
-		SrcIpAddr:  utils.CopyString(c.FormValue("src")),
-		DestIpAddr: utils.CopyString(c.FormValue("dest")),
-		DelayMs:    delay,
-	}
-
-	log.Println(fparams)
-	redeployBpf(&fparams)
-	return c.Redirect("/rulesets")
-}
-*/
 
 func Devices(c *fiber.Ctx) error {
+	// TODO Add some useful info here
 	// Render index
 	interfaces := make([]string, 2)
 	interfaces[0] = "asdf"

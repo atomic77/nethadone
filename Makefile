@@ -1,6 +1,10 @@
 project_name = nethadone
 image_name = atomic77/nethadone:latest
 
+NTH_WAN ?= eth0
+NTH_LAN ?= lan0
+
+
 help: ## This help dialog.
 	@grep -F -h "##" $(MAKEFILE_LIST) | grep -F -v fgrep | sed -e 's/\\$$//' | sed -e 's/##//'
 
@@ -20,9 +24,9 @@ up: ## Run the project in a local container
 	make up-silent
 	make shell
 
-run-root: ## Generate docker image
-	go build ./cmd/nethadone.go
-	sudo ./nethadone
+run-root: 
+	go build -o build/ ./cmd/nethadone.go 
+	sudo build/nethadone -lan-interface $(NTH_LAN) -wan-interface $(NTH_WAN)
 
 build: ## Generate docker image
 	go build ./cmd/nethadone.go
@@ -53,7 +57,8 @@ stop: ## Stop the container
 start: ## Start the container
 	docker start $(project_name)
 
-### BPF related
+### BPF related - with qdisc creation now built in, this is hopefully 
+### deprecated
 clean-tc:
 	sudo tc filter del dev eth0 ingress
 	sudo tc filter del dev eth1 ingress

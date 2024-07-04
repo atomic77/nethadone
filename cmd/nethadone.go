@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"log"
 
 	"github.com/atomic77/nethadone/database"
@@ -13,10 +14,10 @@ import (
 
 func main() {
 
-	// ifname := flag.String("interface", "eth0", "Interface to attach to")
-	// dir := flag.String("direction", "egress", "Ingress or Egress")
+	wanIf := flag.String("wan-interface", "eth0", "Interface connecting out to internet")
+	lanIf := flag.String("lan-interface", "eth1", "Interface connected to local network")
 
-	// flag.Parse()
+	flag.Parse()
 
 	// Pass the engine to the Views
 	engine := html.New("./views", ".tpl")
@@ -25,7 +26,10 @@ func main() {
 	})
 
 	database.Connect()
-	handlers.InitializeBpf("eth0")
+	cfg := handlers.BaseConfig
+	cfg.LanInterface = *lanIf
+	cfg.WanInterface = *wanIf
+	handlers.Initialize(&cfg)
 
 	// Middleware
 	// app.Use(recover.New())

@@ -190,3 +190,35 @@ Aggregated bandwidth over 5m for glob groups:
 ```
 sum by (glob) (rate(ip_pair_vic_bytes_total{glob!=""}[5m]))
 ```
+
+## Armv7 support
+
+Attempting to get this running on orangepi zero (armv7 chipset):
+
+Additional headers
+
+```bash
+sudo apt-get install libc6-dev-armel-cross
+```
+
+Install BTF kernel provided by dae:
+
+```bash
+wget https://github.com/daeuniverse/armbian-btf-kernel/releases/download/main-2023-06-17/kernel-sunxi-current_23.08.0-trunk--6.1.33-S2f39-Dbeb1-Pb9fd-Cca58Hfe66-HK01ba-V014b-B76dc.tar
+tar xf kernel-sunxi-current_23.08.0-trunk--6.1.33-S2f39-Dbeb1-Pb9fd-Cca58Hfe66-HK01ba-V014b-B76dc.tar
+sudo dpkg --install linux-*
+```
+
+BPF compilation needs different include dir:
+```bash
+clang -g -O2 -I/usr/arm-linux-gnueabi/include -Wall -target bpf -c throttle.bpf.c -o throttle.o
+```
+
+Qdiscs:
+
+```bash
+sudo tc qdisc add dev eth0 clsact
+sudo tc qdisc add dev wlan0 clsact
+sudo tc qdisc replace dev eth0 root fq
+sudo tc qdisc replace dev wlan0 root fq
+```

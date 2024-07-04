@@ -51,7 +51,7 @@ var BpfCtx BpfContext
 type FiltParams struct {
 	SrcIpAddr  string
 	DestIpAddr string
-	DelayMs    int
+	ClassId    int // The 'integer' part, not including 0x
 }
 
 func (objs *throttleObjects) Close() error {
@@ -61,7 +61,11 @@ func (objs *throttleObjects) Close() error {
 	return nil
 }
 
-func InitializeBpf(ifname string) {
+func Initialize(cfg *Config) {
+
+	config = *cfg
+	createQdiscs()
+	// Load static BPF programs
 	BpfCtx.DnspktObjs = &dnspktObjects{}
 	err := loadDnspktObjects(BpfCtx.DnspktObjs, nil)
 	if err != nil {
@@ -74,13 +78,17 @@ func InitializeBpf(ifname string) {
 		log.Fatalln("failed to load traffic monitor bpf program ", err)
 	}
 
-	attachDnsSniffer("eth0", tc.HandleMinEgress)
-	attachDnsSniffer("eth1", tc.HandleMinEgress)
-	attachDnsSniffer("eth0", tc.HandleMinIngress)
-	attachDnsSniffer("eth1", tc.HandleMinIngress)
-	attachTrafficMonitor("eth0", tc.HandleMinIngress)
-	attachTrafficMonitor("eth0", tc.HandleMinEgress)
-	reattachThrottler("eth0", tc.HandleMinEgress)
+	attachDnsSniffer(config.LanInterface, tc.HandleMinEgress)
+	attachDnsSniffer(config.LanInterface, tc.HandleMinIngress)
+	attachTrafficMonitor(config.LanInterface, tc.HandleMinEgress)
+
+	// Rebuild with our default target filtering so there's something
+	// attached on startup
+	fparams := []FiltParams{
+		{SrcIpAddr: "", DestIpAddr: "192,168,0,174", ClassId: 10},
+	}
+	rebuildBpf("ebpf/throttle.bpf.c.tpl", "ebpf/throttle.bpf.c", &fparams)
+	reattachThrottler(config.LanInterface, tc.HandleMinEgress)
 }
 
 func rebuildBpf(tplfile string, target string, fparams *[]FiltParams) {
@@ -109,13 +117,14 @@ func rebuildBpf(tplfile string, target string, fparams *[]FiltParams) {
 
 }
 
-func cleanupThrottler(iface *net.Interface, direction uint32) {
+func cleanupThrottler(iface *net.Interface) {
 	// Clean up any existing filters prior to rebuilding and attaching
 	tcnl := getTcnl()
 	msg := tc.Msg{
 		Ifindex: uint32(iface.Index),
-		Parent:  core.BuildHandle(tc.HandleRoot, direction),
-		Info:    0x300,
+		Parent:  core.BuildHandle(0x1, 0x0),
+		// Where did this info flag come from ?
+		Info: 0x300,
 	}
 	tfilt, err := tcnl.Filter().Get(&msg)
 	if err != nil {
@@ -148,7 +157,7 @@ func reattachThrottler(ifname string, direction uint32) {
 		log.Fatal(err)
 	}
 
-	cleanupThrottler(iface, direction)
+	cleanupThrottler(iface)
 
 	BpfCtx.ThrottleObjs = &throttleObjects{}
 	spec, err := ebpf.LoadCollectionSpec("ebpf/throttle.o")
@@ -162,6 +171,7 @@ func reattachThrottler(ifname string, direction uint32) {
 
 	fd := uint32(BpfCtx.ThrottleObjs.Prog.FD())
 	flags := uint32(0x1)
+	clsId := core.BuildHandle(1, 0)
 
 	// Create a tc/filter object that will attach the eBPF program to the qdisc/clsact.
 	bpfName := "throttle"
@@ -169,16 +179,17 @@ func reattachThrottler(ifname string, direction uint32) {
 		Msg: tc.Msg{
 			Family:  unix.AF_UNSPEC,
 			Ifindex: uint32(iface.Index),
-			Handle:  0,
-			Parent:  core.BuildHandle(tc.HandleRoot, direction),
+			Handle:  core.BuildHandle(0x0, 0x1),
+			Parent:  core.BuildHandle(0x1, 0x0),
 			Info:    0x300,
 		},
 		Attribute: tc.Attribute{
 			Kind: "bpf",
 			BPF: &tc.Bpf{
-				FD:    &fd,
-				Flags: &flags,
-				Name:  &bpfName,
+				FD:      &fd,
+				Flags:   &flags,
+				Name:    &bpfName,
+				ClassID: &clsId,
 			},
 		},
 	}
@@ -222,49 +233,6 @@ func compileBpf(tplfile string, target string, fparams *[]FiltParams) {
 		log.Fatal("failed to compile ebpf prog, out: ", string(out), " err: ", err)
 	}
 	log.Println("Compilation output: ", string(out))
-}
-
-func attachQdiscToIface(tcnl *tc.Tc, iface *net.Interface) {
-	// TODO Unused, assume the qdisc is created
-
-	qdisc := tc.Object{
-		Msg: tc.Msg{
-			Family:  unix.AF_UNSPEC,
-			Ifindex: uint32(iface.Index),
-			Handle:  core.BuildHandle(tc.HandleRoot, 0x0000),
-			Parent:  tc.HandleMinEgress,
-			Info:    0,
-		},
-		Attribute: tc.Attribute{
-			Kind: "clsact",
-			// Kind: "fq",
-		},
-	}
-
-	if err := tcnl.Qdisc().Add(&qdisc); err != nil {
-		log.Println("couldn't add qdisc ", err)
-		if err := tcnl.Qdisc().Replace(&qdisc); err != nil {
-			log.Fatal("couldn't replace qdisc ", err)
-		}
-	}
-}
-func getQdiscInfo() {
-
-	// get all the qdiscs from all interfaces
-	/*
-		qdiscs, err := tcnl.Qdisc().Get()
-		if err != nil {
-			log.Printf("could not get qdiscs: %v\n", err)
-			return
-		}
-		for _, v := range qdiscs {
-			if v.Ifindex == uint32(iface.Index) {
-				// Got a match
-				// qdisc = v
-				log.Println("Matching qdisc: ", v.Ifindex, v.Info, v.Attribute)
-			}
-		}
-	*/
 }
 
 func attachTrafficMonitor(ifname string, direction uint32) {
@@ -369,68 +337,6 @@ func pollDnsResponses() {
 		}
 	}
 }
-
-/*
-func redeployTcFilt(fparams *[]FiltParams) {
-
-	tcnl := getTcnl()
-
-	iface, err := net.InterfaceByName("eth0")
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	compileBpf(
-		"ebpf/tcfilt.bpf.c.tpl",
-		"/tmp/tcfilt.o",
-		fparams,
-	)
-
-	spec, err := ebpf.LoadCollectionSpec("/tmp/tcfilt.o")
-	if err != nil {
-		log.Fatal("failed to load spec ", err)
-	}
-
-	if BpfCtx.TcFilterObjs != nil {
-		BpfCtx.TcFilterObjs.Prog.Close()
-	}
-	tcFilt := &filtObjs{}
-	if err := spec.LoadAndAssign(tcFilt, nil); err != nil {
-		log.Fatal("failed to load and assign prog spec", err)
-	}
-	BpfCtx.TcFilterObjs = tcFilt
-
-	log.Println("bpf - tcfilter objs ref", repr.String(BpfCtx.TcFilterObjs))
-	// fd := uint32(BpfCtx.TcFilterObjs.Prog.FD())
-	fd := uint32(tcFilt.Prog.FD())
-	flags := uint32(0x1)
-
-	// Create a tc/filter object that will attach the eBPF program to the qdisc/clsact.
-	filter := tc.Object{
-		Msg: tc.Msg{
-			Family:  unix.AF_UNSPEC,
-			Ifindex: uint32(iface.Index),
-			Handle:  0,
-			// Parent:  core.BuildHandle(tc.HandleRoot, tc.HandleMinEgress),
-			Parent: core.BuildHandle(tc.HandleRoot, tc.HandleMinIngress),
-			Info:   0x300,
-		},
-		Attribute: tc.Attribute{
-			Kind: "bpf",
-			BPF: &tc.Bpf{
-				FD:    &fd,
-				Flags: &flags,
-			},
-		},
-	}
-
-	// Attach the tc/filter object with the eBPF program to the qdisc/clsact.
-	if err := tcnl.Filter().Add(&filter); err != nil {
-		log.Fatal("could not attach filter for eBPF program: ", err)
-		return
-	}
-}
-*/
 
 func getTcnl() *tc.Tc {
 	if BpfCtx.Tcnl != nil {
