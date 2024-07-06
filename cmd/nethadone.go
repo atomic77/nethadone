@@ -6,6 +6,7 @@ import (
 
 	"github.com/atomic77/nethadone/database"
 	"github.com/atomic77/nethadone/handlers"
+	"github.com/atomic77/nethadone/policy"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/adaptor"
 	"github.com/gofiber/fiber/v2/middleware/logger"
@@ -45,18 +46,9 @@ func main() {
 	app.Post("/globs/add", handlers.GlobAdd)
 
 	handlers.InitMetrics()
-	// app.Get("/metrics", adaptor.HTTPHandler(promhttp.Handler()))
+	policy.InitPolicy()
+
 	app.Get("/metrics", adaptor.HTTPHandlerFunc(handlers.MetricsHandleFunc))
-
-	/*
-		Can eventually create groups like so
-		// Create a /api/v1 endpoint
-		v1 := app.Group("/api/v1")
-
-		// Bind handlers
-		v1.Get("/users", handlers.UserList)
-		v1.Post("/users", handlers.UserCreate)
-	*/
 
 	app.Get("/favicon.ico", func(c *fiber.Ctx) error {
 		return c.SendFile("static/laptop.svg")
