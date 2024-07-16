@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/alecthomas/repr"
+	"github.com/atomic77/nethadone/models"
 	"github.com/florianl/go-tc"
 )
 
@@ -19,11 +20,11 @@ func TestEbpfRebuild(t *testing.T) {
 	tplfile := "../ebpf/throttle.bpf.c.tpl"
 	cfile := "../ebpf/throttle.bpf.c"
 
-	fparams := make([]FiltParams, 0)
-	fparams = append(fparams, FiltParams{
+	fparams := make([]models.IpPolicy, 0)
+	fparams = append(fparams, models.IpPolicy{
 		SrcIpAddr:  "127,0,0,1",
 		DestIpAddr: "10,0,0,1",
-		DelayMs:    10,
+		ClassId:    10,
 	})
 	rebuildBpf(tplfile, cfile, &fparams)
 }

@@ -56,8 +56,8 @@ func Interfaces(c *fiber.Ctx) error {
 func Rules(c *fiber.Ctx) error {
 
 	// TODO Retrieve these from system
-	fparams := make([]FiltParams, 1)
-	fparams[0] = FiltParams{
+	fparams := make([]models.IpPolicy, 1)
+	fparams[0] = models.IpPolicy{
 		SrcIpAddr:  "192,168,0,108",
 		DestIpAddr: "192,168,0,14",
 		ClassId:    10,
@@ -173,13 +173,13 @@ func RuleChange(c *fiber.Ctx) error {
 	}
 	bl := getBandwidthList(true)
 
-	fparams := make([]FiltParams, 0)
+	fparams := make([]models.IpPolicy, 0)
 
 	for _, b := range bl {
 		log.Println("src ip, dest ip", b.SrcIpAddr, b.DestIpAddr)
 		dip := strings.Join(strings.Split(b.DestIpAddr.String(), "."), ",")
 		sip := strings.Join(strings.Split(b.SrcIpAddr.String(), "."), ",")
-		fp := FiltParams{
+		fp := models.IpPolicy{
 			SrcIpAddr:  sip,
 			DestIpAddr: dip,
 			ClassId:    classId,
@@ -188,7 +188,7 @@ func RuleChange(c *fiber.Ctx) error {
 	}
 	// TODO Testing - inject local endpoint for testing
 
-	fplocal := FiltParams{
+	fplocal := models.IpPolicy{
 		SrcIpAddr: "", DestIpAddr: "192,168,0,174", ClassId: classId,
 	}
 	fparams = append(fparams, fplocal)
@@ -204,8 +204,8 @@ func RuleChange(c *fiber.Ctx) error {
 }
 
 func Devices(c *fiber.Ctx) error {
-	// TODO Add some useful info here
-	// Render index
+	// TODO Provide something useful here based on actual devices in
+	// system and clients seen on the network
 	interfaces := make([]string, 2)
 	interfaces[0] = "asdf"
 	interfaces[1] = "fdsa"

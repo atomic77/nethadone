@@ -30,7 +30,7 @@ func GetIPsMatchingGlob(g *models.GlobGroup) []string {
 		WHERE CAST("domain" as VARCHAR) glob $1
 		-- Only consider relatively recent IPs. This will need to
 		-- be fine-tuned during real operation
-	    AND tstamp between date('now', '-5 days') and date('now')
+	    -- AND tstamp between date('now', '-5 days') and date('now')
 	`
 	err := dnsDb.Select(&ips, sql, g.Glob)
 	if err != nil {

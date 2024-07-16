@@ -13,15 +13,19 @@ import (
 
 var promDb api.Client
 
-func GetSrcGlobUsage(rate int, mins int, k int) model.Vector {
+func GetSrcGlobUsage(rate int, mins int, k int, above bool) model.Vector {
 
 	queryAPI := v1.NewAPI(promDb)
 
+	op := ">"
+	if !above {
+		op = "<"
+	}
 	pql := fmt.Sprintf(
 		`sum by (src_ip, glob) (
 			rate(ip_pair_vic_bytes_total{glob!=""}[%dm])
-		) > %d`,
-		rate, k)
+		) %s %d`,
+		rate, op, k)
 	dr := time.Duration(int64(mins) * int64(time.Minute))
 	tm := time.Now().Add(dr)
 	result, warnings, err := queryAPI.Query(context.Background(), pql, tm)

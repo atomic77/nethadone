@@ -9,6 +9,7 @@ import (
 
 	"github.com/alecthomas/repr"
 	"github.com/atomic77/nethadone/database"
+	"github.com/atomic77/nethadone/models"
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/perf"
 	tc "github.com/florianl/go-tc"
@@ -47,13 +48,6 @@ type BpfContext struct {
 
 var BpfCtx BpfContext
 
-// IPaddr is comma separated due to use of IP_ADDRESS macro in bpf code, eg. 192,168,0,14
-type FiltParams struct {
-	SrcIpAddr  string
-	DestIpAddr string
-	ClassId    int // The 'integer' part, not including 0x
-}
-
 func (objs *throttleObjects) Close() error {
 	if err := objs.Prog.Close(); err != nil {
 		return err
@@ -84,15 +78,19 @@ func Initialize(cfg *Config) {
 
 	// Rebuild with our default target filtering so there's something
 	// attached on startup
-	fparams := []FiltParams{
+	ipPolicies := []models.IpPolicy{
 		{SrcIpAddr: "", DestIpAddr: "192,168,0,174", ClassId: 10},
 	}
-	rebuildBpf("ebpf/throttle.bpf.c.tpl", "ebpf/throttle.bpf.c", &fparams)
+	ApplyPolicies(&ipPolicies)
+}
+
+func ApplyPolicies(ipPolicies *[]models.IpPolicy) {
+	rebuildBpf("ebpf/throttle.bpf.c.tpl", "ebpf/throttle.bpf.c", ipPolicies)
 	reattachThrottler(config.LanInterface, tc.HandleMinEgress)
 }
 
-func rebuildBpf(tplfile string, target string, fparams *[]FiltParams) {
-	log.Println("Rebuilding with ", len(*fparams), " throttle targets")
+func rebuildBpf(tplfile string, target string, ipPolicies *[]models.IpPolicy) {
+	log.Println("Rebuilding with ", len(*ipPolicies), " throttle targets from policy database")
 
 	f, err := os.Create(target)
 	if err != nil {
@@ -100,9 +98,9 @@ func rebuildBpf(tplfile string, target string, fparams *[]FiltParams) {
 	}
 	tpl := template.Must(template.ParseFiles(tplfile))
 	type fdata struct {
-		FiltParams *[]FiltParams
+		IpPolicies *[]models.IpPolicy
 	}
-	err = tpl.Execute(f, fdata{FiltParams: fparams})
+	err = tpl.Execute(f, fdata{IpPolicies: ipPolicies})
 	if err != nil {
 		log.Fatal("failed to render file ", err)
 	}
@@ -201,40 +199,42 @@ func reattachThrottler(ifname string, direction uint32) {
 	}
 }
 
-func compileBpf(tplfile string, target string, fparams *[]FiltParams) {
-	// Used for dynamic recompilation of tcfilt bpf program that will be
-	// continuously retemplated and recompiled.
-	// Investigate how or if this can be accomplished with bpf2go
-	// DNS packet sniffing BPF program that is static has been moved to bpf2go already
+/*
+	func CompileBpf(tplfile string, target string, ips *[]models.IpPolicy) {
+		// Used for dynamic recompilation of tcfilt bpf program that will be
+		// continuously rendered based on the template and recompiled.
+		// It seems that this can't easily be done with bpf2go since the binary code
+		// gets compiled into the binary
+		// DNS packet sniffing BPF program that is static has been moved to bpf2go already
 
-	cfile := "/tmp/mybpfprog.c"
-	f, err := os.Create(cfile)
-	if err != nil {
-		log.Fatal("failed to create rendered file ", err)
-	}
-	tpl := template.Must(template.ParseFiles(tplfile))
-	type fdata struct {
-		FiltParams *[]FiltParams
-	}
-	err = tpl.Execute(f, fdata{FiltParams: fparams})
-	if err != nil {
-		log.Fatal("failed to render file ", err)
-	}
+		cfile := "/tmp/mybpfprog.c"
+		f, err := os.Create(cfile)
+		if err != nil {
+			log.Fatal("failed to create rendered file ", err)
+		}
+		tpl := template.Must(template.ParseFiles(tplfile))
+		type fdata struct {
+			IpPolicies *[]models.IpPolicy
+		}
+		err = tpl.Execute(f, fdata{IpPolicies: ips})
+		if err != nil {
+			log.Fatal("failed to render file ", err)
+		}
 
-	out, err := exec.Command(
-		// "su", "atomic", "-c",
-		// "clang", "-g", "-O2", "-I/usr/include/aarch64-linux-gnu", "-Wall", "-target", "bpf",
-		// "-c", file, "-o", target,
-		// `clang -g -O2 -I/usr/include/aarch64-linux-gnu -Wall -target bpf -c ` + cfile + " -o " + target,
-		"clang", "-g", "-O2", "-I/usr/include/aarch64-linux-gnu", "-Wall", "-target", "bpf",
-		"-c", cfile, "-o", target,
-	).CombinedOutput()
-	if err != nil {
-		log.Fatal("failed to compile ebpf prog, out: ", string(out), " err: ", err)
+		out, err := exec.Command(
+			// "su", "atomic", "-c",
+			// "clang", "-g", "-O2", "-I/usr/include/aarch64-linux-gnu", "-Wall", "-target", "bpf",
+			// "-c", file, "-o", target,
+			// `clang -g -O2 -I/usr/include/aarch64-linux-gnu -Wall -target bpf -c ` + cfile + " -o " + target,
+			"clang", "-g", "-O2", "-I/usr/include/aarch64-linux-gnu", "-Wall", "-target", "bpf",
+			"-c", cfile, "-o", target,
+		).CombinedOutput()
+		if err != nil {
+			log.Fatal("failed to compile ebpf prog, out: ", string(out), " err: ", err)
+		}
+		log.Println("Compilation output: ", string(out))
 	}
-	log.Println("Compilation output: ", string(out))
-}
-
+*/
 func attachTrafficMonitor(ifname string, direction uint32) {
 
 	log.Println("Attaching bandwidth monitor BPF to if ", ifname, " direction ", direction)

@@ -78,7 +78,7 @@ int throttle(struct __sk_buff *skb)
 
     increment_scanned();
 	
-    {{ range .FiltParams }}
+    {{ range .IpPolicies }}
     if (  
         l3->saddr == IP_ADDRESS({{ .DestIpAddr }})
         {{ if .SrcIpAddr }} && l3->daddr == IP_ADDRESS({{ .SrcIpAddr }}) {{ end }}

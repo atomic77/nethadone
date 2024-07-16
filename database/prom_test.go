@@ -9,7 +9,7 @@ import (
 func TestPromqlQuery(t *testing.T) {
 
 	Connect()
-	samp := GetSrcGlobUsage(5, -5, 1000)
+	samp := GetSrcGlobUsage(5, -5, 1000, true)
 
 	repr.Println(samp)
 

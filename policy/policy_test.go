@@ -58,10 +58,22 @@ func TestPolicyBase(t *testing.T) {
 
 	database.Connect()
 	k := 10
-	vec1 := database.GetSrcGlobUsage(1, 0, k)
-	vec2 := database.GetSrcGlobUsage(1, 5, k)
-	vec3 := database.GetSrcGlobUsage(5, -6, k)
+	vec1 := database.GetSrcGlobUsage(1, 0, k, true)
+	vec2 := database.GetSrcGlobUsage(1, 5, k, true)
+	vec3 := database.GetSrcGlobUsage(5, -6, k, true)
 
 	repr.Println(vec1, vec2, vec3)
 
+}
+
+func TestGetPolicies(t *testing.T) {
+
+	database.Connect()
+	policies := database.GetAllPolicies()
+	repr.Println(policies)
+	for _, p := range *policies {
+		ipPolicies := database.GetIpPolicies(&p)
+		repr.Println(ipPolicies)
+
+	}
 }
