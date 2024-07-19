@@ -5,13 +5,10 @@ import (
 	"log"
 	"net/http"
 	"path/filepath"
-	"strconv"
-	"strings"
 
 	"github.com/VictoriaMetrics/metrics"
 	"github.com/atomic77/nethadone/database"
 	"github.com/atomic77/nethadone/models"
-	"github.com/florianl/go-tc"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/utils"
 	"github.com/vishvananda/netlink"
@@ -20,7 +17,7 @@ import (
 	"net"
 )
 
-var config Config
+// var config Config
 
 func Index(c *fiber.Ctx) error {
 	// Render index
@@ -53,20 +50,13 @@ func Interfaces(c *fiber.Ctx) error {
 	}, "layouts/base")
 }
 
-func Rules(c *fiber.Ctx) error {
+func Policies(c *fiber.Ctx) error {
 
-	// TODO Retrieve these from system
-	fparams := make([]models.IpPolicy, 1)
-	fparams[0] = models.IpPolicy{
-		SrcIpAddr:  "192,168,0,108",
-		DestIpAddr: "192,168,0,14",
-		ClassId:    10,
-	}
-
-	bl := getBandwidthList(true)
-
-	return c.Render("rules", fiber.Map{
-		"BandwidthList": bl,
+	// bl := getBandwidthList(true)
+	policies := database.GetAllPolicies()
+	return c.Render("policies", fiber.Map{
+		// "BandwidthList": bl,
+		"Policies": policies,
 	}, "layouts/base")
 }
 
@@ -116,6 +106,7 @@ func getMatchingGlobGroup(dom string) *models.GlobGroup {
 }
 
 func getBandwidthList(globsOnly bool) []BandwidthList {
+	// TODO This needs to be optimized
 
 	var key, val uint64
 	vals := make([]BandwidthList, 0)
@@ -159,48 +150,6 @@ func Bandwidth(c *fiber.Ctx) error {
 	return c.Render("bandwidth", fiber.Map{
 		"BandwidthList": bl,
 	}, "layouts/base")
-}
-
-func RuleChange(c *fiber.Ctx) error {
-
-	classId, err := strconv.Atoi(utils.CopyString(c.FormValue("classId")))
-	if err != nil {
-		return c.JSON(fiber.Map{
-			"status": "Failed to parse delay value",
-			"err":    err,
-			"val":    c.FormValue("classId"),
-		})
-	}
-	bl := getBandwidthList(true)
-
-	fparams := make([]models.IpPolicy, 0)
-
-	for _, b := range bl {
-		log.Println("src ip, dest ip", b.SrcIpAddr, b.DestIpAddr)
-		dip := strings.Join(strings.Split(b.DestIpAddr.String(), "."), ",")
-		sip := strings.Join(strings.Split(b.SrcIpAddr.String(), "."), ",")
-		fp := models.IpPolicy{
-			SrcIpAddr:  sip,
-			DestIpAddr: dip,
-			ClassId:    classId,
-		}
-		fparams = append(fparams, fp)
-	}
-	// TODO Testing - inject local endpoint for testing
-
-	fplocal := models.IpPolicy{
-		SrcIpAddr: "", DestIpAddr: "192,168,0,174", ClassId: classId,
-	}
-	fparams = append(fparams, fplocal)
-
-	// /TESTING
-	rebuildBpf(
-		"ebpf/throttle.bpf.c.tpl",
-		"ebpf/throttle.bpf.c",
-		&fparams,
-	)
-	reattachThrottler(config.LanInterface, tc.HandleMinEgress)
-	return c.Redirect("/rulesets")
 }
 
 func Devices(c *fiber.Ctx) error {

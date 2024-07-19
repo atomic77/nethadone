@@ -76,9 +76,8 @@ int udp_dns_sniff(struct __sk_buff *skb)
 			ip->protocol == IPPROTO_UDP &&
 			(udp_hdr->dest == bpf_htons(53) || udp_hdr->source == bpf_htons(53) )
 		) {
-		// "UDP packet srcip: %pI4, destip: %pI4";
-		char fmt[] =  "udp port dest %d, src port: %d"; //, size %d, udplen: %d";
-		bpf_trace_printk(fmt, sizeof(fmt), bpf_htons(udp_hdr->dest), bpf_htons(udp_hdr->source));//, bpf_htons(udp_hdr->dest));// , skb->len, bpf_ntohs(udp_hdr->len));	
+		bpf_printk("udp port dest %d, src port: %d", bpf_htons(udp_hdr->dest), bpf_htons(udp_hdr->source));
+		//, bpf_htons(udp_hdr->dest));// , skb->len, bpf_ntohs(udp_hdr->len));	
 
 		__u32 id = 0;
 		struct payload_t *payload = bpf_map_lookup_elem(&tmp_map, &id);
@@ -86,8 +85,7 @@ int udp_dns_sniff(struct __sk_buff *skb)
 			return TC_ACT_UNSPEC;
 	
 		__u32 len = skb->len < DATA_LEN ? skb->len : DATA_LEN;
-		char fmt2[] = "Submitting pkt len %d"; 
-		bpf_trace_printk(fmt2, sizeof(fmt2), len); 
+		bpf_printk("Submitting pkt len %d", len); 
 		__u32 offset = sizeof(*eth) + sizeof(*ip) + sizeof(*udp_hdr);
 		__u32 udp_len = skb->len - offset;
 		payload->len = udp_len;

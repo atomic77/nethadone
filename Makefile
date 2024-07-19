@@ -26,7 +26,7 @@ up: ## Run the project in a local container
 
 run-root: 
 	go build -o build/ ./cmd/nethadone.go 
-	sudo build/nethadone -lan-interface $(NTH_LAN) -wan-interface $(NTH_WAN)
+	sudo build/nethadone -lan-interface $(NTH_LAN) -wan-interface $(NTH_WAN) -config-file config/nethadone.yml
 
 build: ## Generate docker image
 	go build ./cmd/nethadone.go

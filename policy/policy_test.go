@@ -3,15 +3,26 @@ package policy
 import (
 	"context"
 	"fmt"
+	"os"
 	"testing"
 	"time"
 
 	"github.com/alecthomas/repr"
+	"github.com/atomic77/nethadone/config"
 	"github.com/atomic77/nethadone/database"
 	"github.com/prometheus/client_golang/api"
 	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/common/model"
 )
+
+func init() {
+	home, _ := os.UserHomeDir()
+	config.Cfg.DnsDb = home + "/dns.db"
+	config.Cfg.CfgDb = home + "/cfg.db"
+	config.Cfg.PrometheusUrl = "http://192.168.0.176:9090/"
+	database.Connect()
+
+}
 
 func TestPromQuery(t *testing.T) {
 	promURL := "http://localhost:9090"
@@ -76,4 +87,10 @@ func TestGetPolicies(t *testing.T) {
 		repr.Println(ipPolicies)
 
 	}
+}
+
+func TestActiveGroups(t *testing.T) {
+
+	s := getActiveGlobGroups()
+	repr.Println(s)
 }

@@ -1,0 +1,36 @@
+# The WAN interface should have access to the internet
+wan_interface: "eth0"
+# The LAN interface is where your local devices are
+lan_nterface: "eth1"
+
+cfg_db: "/root/cfg.db"
+dns_db: "/root/dns.db"
+prometheus_url: "http://localhost:9090"
+
+# Parameters for the htb # netem qdiscs and classes we'll create on the fly
+# WanMbs represents the max bandwidth of your downstream internet connection
+# The MinRateKbs and MaxDelayMs represent the maximum bandwidth degradation ;
+# classes will be created linearly between them based on `NumQdiscClasses`,
+# and the Start and Min RateKbs
+num_qdisc_classes: 5
+wan_mbps: 100
+start_rate_kbs: 1000
+max_delay_ms: 50
+min_rate_kbs: 50
+
+####################
+# Parameters for the Simple Load average policy
+# See policy/README.md for details
+
+# Activity threshold is represented as `k` in policy readme,
+# the number of bytes considered "active" for the prom rate
+# queries.
+# For sites that do not consume a lot of bandwidth (eg. browsing mostly
+# comments on Reddit or Twitter), and involve some idle periods, 
+# this can be set to a very low number like 0. For more bandwidth heavy
+# sites, a larger number may make sense. 
+activity_threshold_bytes: 1
+# How many minutes before we'll consider a change to policy;
+# setting this lower will cause clients to be moved up and
+# down bandwidth classes faster
+policy_backoff_minutes: 2

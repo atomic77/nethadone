@@ -8,6 +8,7 @@ import (
 	"text/template"
 
 	"github.com/alecthomas/repr"
+	"github.com/atomic77/nethadone/config"
 	"github.com/atomic77/nethadone/database"
 	"github.com/atomic77/nethadone/models"
 	"github.com/cilium/ebpf"
@@ -55,9 +56,8 @@ func (objs *throttleObjects) Close() error {
 	return nil
 }
 
-func Initialize(cfg *Config) {
+func Initialize() {
 
-	config = *cfg
 	createQdiscs()
 	// Load static BPF programs
 	BpfCtx.DnspktObjs = &dnspktObjects{}
@@ -72,9 +72,12 @@ func Initialize(cfg *Config) {
 		log.Fatalln("failed to load traffic monitor bpf program ", err)
 	}
 
-	attachDnsSniffer(config.LanInterface, tc.HandleMinEgress)
-	attachDnsSniffer(config.LanInterface, tc.HandleMinIngress)
-	attachTrafficMonitor(config.LanInterface, tc.HandleMinEgress)
+	// For reasons I've yet to understand (I feel like this isn't the first
+	// time I'm adding such a comment :) DNS answers don't seem to be caught
+	// on the LAN interface...
+	attachDnsSniffer(config.Cfg.WanInterface, tc.HandleMinEgress)
+	attachDnsSniffer(config.Cfg.WanInterface, tc.HandleMinIngress)
+	attachTrafficMonitor(config.Cfg.LanInterface, tc.HandleMinEgress)
 
 	// Rebuild with our default target filtering so there's something
 	// attached on startup
@@ -86,7 +89,7 @@ func Initialize(cfg *Config) {
 
 func ApplyPolicies(ipPolicies *[]models.IpPolicy) {
 	rebuildBpf("ebpf/throttle.bpf.c.tpl", "ebpf/throttle.bpf.c", ipPolicies)
-	reattachThrottler(config.LanInterface, tc.HandleMinEgress)
+	reattachThrottler(config.Cfg.LanInterface, tc.HandleMinEgress)
 }
 
 func rebuildBpf(tplfile string, target string, ipPolicies *[]models.IpPolicy) {
@@ -130,14 +133,10 @@ func cleanupThrottler(iface *net.Interface) {
 	}
 	for _, tobj := range tfilt {
 		if tobj.BPF != nil && tobj.BPF.Name != nil && *tobj.BPF.Name == "throttle" {
-			log.Println("found prior throttler filter, removing")
-			repr.Println(tobj)
 			tcnl.Filter().Delete(&tobj)
 		}
 	}
 	if BpfCtx.ThrottleObjs != nil {
-		log.Println("Found existing Throttler BPF; closing")
-		// TODO Confirm what here is necessary
 		BpfCtx.ThrottleObjs.Map.Close()
 		BpfCtx.ThrottleObjs.Prog.Close()
 		BpfCtx.ThrottleObjs.Close()
@@ -324,12 +323,14 @@ func pollDnsResponses() {
 		if err := msg.Unpack(event.RawSample); err != nil {
 			log.Println("Error decoding DNS record:", err)
 		}
+		// TODO Investigate how to better control logging verbosity levels
+		// log.Println("Captured DNS packet ", msg.Question, msg.Answer)
 
 		for _, resp := range msg.Answer {
 			a, ok := resp.(*dns.A)
 			if ok {
 				err = database.AddDns(a.Header().Name, &a.A)
-				log.Println("DNS A response:", a.Header().Name, a.A.String())
+				// log.Println("DNS A response:", a.Header().Name, a.A.String())
 				if err != nil {
 					log.Println("failed to write to dns db", err)
 				}

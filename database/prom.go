@@ -27,7 +27,7 @@ func GetSrcGlobUsage(rate int, mins int, k int, above bool) model.Vector {
 		) %s %d`,
 		rate, op, k)
 	dr := time.Duration(int64(mins) * int64(time.Minute))
-	tm := time.Now().Add(dr)
+	tm := time.Now().Add(-1 * dr)
 	result, warnings, err := queryAPI.Query(context.Background(), pql, tm)
 	if err != nil {
 		log.Println("error trying to query prometheus: ", err, warnings)

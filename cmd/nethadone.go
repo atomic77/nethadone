@@ -4,6 +4,8 @@ import (
 	"flag"
 	"log"
 
+	"github.com/alecthomas/repr"
+	"github.com/atomic77/nethadone/config"
 	"github.com/atomic77/nethadone/database"
 	"github.com/atomic77/nethadone/handlers"
 	"github.com/atomic77/nethadone/policy"
@@ -17,8 +19,18 @@ func main() {
 
 	wanIf := flag.String("wan-interface", "eth0", "Interface connecting out to internet")
 	lanIf := flag.String("lan-interface", "eth1", "Interface connected to local network")
+	configFile := flag.String("config-file", "nethadone.yml", "Configuration file")
 
 	flag.Parse()
+
+	config.ParseConfig(*configFile)
+	// Command line parameters override anything that might be in the config
+	config.Cfg.LanInterface = *lanIf
+	config.Cfg.WanInterface = *wanIf
+
+	log.Println("Configuration: ", repr.String(config.Cfg, repr.Indent("  ")))
+	database.Connect()
+	handlers.Initialize()
 
 	// Pass the engine to the Views
 	engine := html.New("./views", ".tpl")
@@ -26,21 +38,12 @@ func main() {
 		Views: engine,
 	})
 
-	database.Connect()
-	cfg := handlers.BaseConfig
-	cfg.LanInterface = *lanIf
-	cfg.WanInterface = *wanIf
-	handlers.Initialize(&cfg)
-
-	// Middleware
-	// app.Use(recover.New())
 	app.Use(logger.New())
 
 	app.Get("/", handlers.Index)
 	app.Get("/interfaces", handlers.Interfaces)
 	app.Get("/devices", handlers.Devices)
-	app.Get("/rulesets", handlers.Rules)
-	app.Post("/rulesets/change", handlers.RuleChange)
+	app.Get("/policies", handlers.Policies)
 	app.Get("/bandwidth", handlers.Bandwidth)
 	app.Get("/globs", handlers.Globs)
 	app.Post("/globs/add", handlers.GlobAdd)

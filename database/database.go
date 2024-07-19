@@ -3,9 +3,9 @@ package database
 import (
 	"log"
 	"net"
-	"os"
 	"strings"
 
+	"github.com/atomic77/nethadone/config"
 	"github.com/atomic77/nethadone/models"
 	"github.com/jmoiron/sqlx"
 	"github.com/prometheus/client_golang/api"
@@ -41,8 +41,8 @@ func Connect() {
 		);`,
 	}
 
-	home, _ := os.UserHomeDir()
-	dnsDb, err = sqlx.Open("sqlite", home+"/dns.db?mode=rw")
+	dnsDb, err = sqlx.Open("sqlite", config.Cfg.DnsDb+"?mode=rw&busy_timeout=1000")
+	dnsDb.DB.SetMaxOpenConns(1)
 	if err != nil {
 		log.Fatalln("Could not open sqlite DNS db")
 	}
@@ -50,12 +50,13 @@ func Connect() {
 	dnsDb.MustExec(`CREATE TABLE IF NOT EXISTS dns (
 		saddr text, 
 		daddr text,
-		dport int, 
 		domain text, 
-		tstamp timestamp         
+		tstamp timestamp,
+		PRIMARY KEY (daddr, saddr, domain)
 	);`)
 
-	cfgDb, err = sqlx.Open("sqlite", home+"/cfg.db?mode=rw")
+	cfgDb, err = sqlx.Open("sqlite", config.Cfg.CfgDb+"?mode=rw&busy_timeout=1000")
+	cfgDb.DB.SetMaxOpenConns(1)
 	if err != nil {
 		log.Fatalln("Could not open sqlite cfg db")
 	}
@@ -65,7 +66,7 @@ func Connect() {
 	}
 
 	// Local prometheus instance
-	promDb, err = api.NewClient(api.Config{Address: "http://localhost:9090"})
+	promDb, err = api.NewClient(api.Config{Address: config.Cfg.PrometheusUrl})
 	if err != nil {
 		log.Fatalln("Could not connect to local prometheus instance")
 	}
@@ -97,8 +98,9 @@ func AddGlob(g *models.GlobGroup) error {
 
 func AddDns(domain string, ipaddr *net.IP) error {
 
-	sql := `INSERT INTO dns VALUES 
-	(:saddr, :daddr, :dport, :domain, datetime())`
+	sql := `INSERT INTO dns VALUES (:saddr, :daddr, :domain, datetime())
+	ON CONFLICT (saddr, daddr, domain) 
+	DO UPDATE SET tstamp = datetime()`
 	_, err := dnsDb.NamedExec(sql, map[string]interface{}{
 		// TODO Source of the DNS request should be tracked as well
 		// to ensure shared IPs aren't filtered for clients accessing
@@ -114,10 +116,11 @@ func AddDns(domain string, ipaddr *net.IP) error {
 func GetPolicy(src_ip string, glob_group string) *models.Policy {
 
 	sql := `SELECT * FROM policy 
-			WHERE src_ip = :src_ip AND glob_group = :glob_group`
+			WHERE src_ip = $1 AND glob_group = $2`
 	policy := models.Policy{}
-	err := cfgDb.Get(&policy, sql)
+	err := cfgDb.Get(&policy, sql, src_ip, glob_group)
 	if err != nil {
+		// log.Println("failure getting policy:", err)
 		return nil
 	}
 	return &policy
@@ -129,6 +132,7 @@ func GetAllPolicies() *[]models.Policy {
 	policies := make([]models.Policy, 0)
 	err := cfgDb.Select(&policies, sql)
 	if err != nil {
+		log.Println("failure getting policies:", err)
 		return nil
 	}
 	return &policies
@@ -140,7 +144,7 @@ func UpdatePolicy(src_ip string, glob_group string, class int) error {
 	sql := `INSERT INTO policy 
 	VALUES (:src_ip, :glob_group, :class, datetime())
 	ON CONFLICT (src_ip, glob_group) 
-	DO UPDATE SET class = :class
+	DO UPDATE SET class = :class, tstamp = datetime()
 	`
 	_, err := cfgDb.NamedExec(sql, map[string]interface{}{
 		"src_ip":     src_ip,

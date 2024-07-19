@@ -5,6 +5,7 @@ import (
 	"net"
 
 	"github.com/alecthomas/repr"
+	"github.com/atomic77/nethadone/config"
 	tc "github.com/florianl/go-tc"
 	"github.com/florianl/go-tc/core"
 	"github.com/vishvananda/netlink"
@@ -40,8 +41,8 @@ func createQdiscs() {
 		sudo tc class add dev lan0 parent 1: classid 1:1 htb rate 100Mbit ceil 100Mbit
 	*/
 
-	log.Println("Checking LAN interface ", config.LanInterface)
-	iface, err := net.InterfaceByName(config.LanInterface)
+	log.Println("Checking LAN interface ", config.Cfg.LanInterface)
+	iface, err := net.InterfaceByName(config.Cfg.LanInterface)
 	if err != nil {
 		log.Fatal("could not open interface ", err)
 	}
@@ -78,18 +79,31 @@ func createQdiscs() {
 
 	createLeafQdiscs(&leaves)
 
+	recreateBpfQdisc(iface)
+
+	// Prepare BPF clsact for WAN interface
+	log.Println("Checking WAN interface ", config.Cfg.WanInterface)
+	iface, err = net.InterfaceByName(config.Cfg.WanInterface)
+	if err != nil {
+		log.Fatal("could not open interface ", err)
+	}
+	recreateBpfQdisc(iface)
+
+}
+
+func recreateBpfQdisc(iface *net.Interface) {
+	// Deleting the clsact qdisc on startup ensures that any child filters, ebpf progs are cleaned up
 	bpfQdisc := &netlink.Clsact{
 		netlink.QdiscAttrs{LinkIndex: iface.Index, Handle: netlink.MakeHandle(0xffff, 0), Parent: netlink.HANDLE_CLSACT},
 	}
 
-	// Deleting the clsact qdisc on startup ensures that any child filters, ebpf progs are cleaned up
 	netlink.QdiscDel(
 		&netlink.GenericQdisc{QdiscAttrs: netlink.QdiscAttrs{LinkIndex: iface.Index, Parent: netlink.HANDLE_CLSACT}},
 	)
 
-	err = netlink.QdiscAdd(bpfQdisc)
+	err := netlink.QdiscAdd(bpfQdisc)
 	if err != nil {
-		log.Fatal("could not add clsact qdisc on ", config.LanInterface, ": ", err)
+		log.Fatal("could not add clsact qdisc on ", iface, ": ", err)
 	}
 }
 
@@ -111,12 +125,12 @@ func generateQdiscLeafNodes(iface *net.Interface) []leafConfig {
 		{Rate: 95 * MBit, Ceil: 100 * MBit, Kind: "prio", Iface: iface.Index},
 	}
 
-	for i := 1; i <= config.NumQdiscClasses; i++ {
+	for i := 1; i <= config.Cfg.NumQdiscClasses; i++ {
 
-		factor := float64(i) / float64(config.NumQdiscClasses)
-		scaledRate := (1-factor)*float64((config.StartRateKbs-config.MinRateKbs)) + float64(config.MinRateKbs)
+		factor := float64(i) / float64(config.Cfg.NumQdiscClasses)
+		scaledRate := (1-factor)*float64((config.Cfg.StartRateKbs-config.Cfg.MinRateKbs)) + float64(config.Cfg.MinRateKbs)
 		scaledRate *= KBit
-		scaledDelay := factor * float64(config.MaxDelayMs) * Ms
+		scaledDelay := factor * float64(config.Cfg.MaxDelayMs) * Ms
 		lc := leafConfig{
 			Rate:     uint64(scaledRate),
 			Ceil:     uint64(scaledRate),

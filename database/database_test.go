@@ -1,10 +1,12 @@
 package database
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/alecthomas/repr"
+	"github.com/atomic77/nethadone/config"
 	"github.com/atomic77/nethadone/models"
 )
 
@@ -56,4 +58,18 @@ func TestDomainMatch(t *testing.T) {
 	repr.Println(err)
 	repr.Println(matched)
 	repr.Println(dom)
+}
+
+func BenchmarkDomainMatch(b *testing.B) {
+	// FIXME Searching for domains by IP needs to be optimized
+	home, _ := os.UserHomeDir()
+	config.Cfg.DnsDb = home + "/dns.db"
+	config.Cfg.CfgDb = home + "/cfg.db"
+	Connect()
+	for i := 0; i < b.N; i++ {
+		dom := GetDomainForIP("50.112.128.108")
+		if dom == "" {
+			b.Fail()
+		}
+	}
 }

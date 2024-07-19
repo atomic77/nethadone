@@ -16,7 +16,9 @@ func InitMetrics() {
 
 func pollMetrics() {
 	log.Println("Setting up metrics collector")
-	for range time.Tick(time.Second * 10) {
+	for range time.Tick(time.Second * 15) {
+		// TODO Once we get into the 1000s of IP pairs being tracked, the
+		// performance of this method becomes quite slow
 		bl := getBandwidthList(false)
 		log.Println("Tick happened, collected ", len(bl), " pairs")
 		for _, b := range bl {
