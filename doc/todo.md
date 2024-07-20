@@ -54,3 +54,26 @@ DNS record repr dump:
 }
 
 ```
+## BPF Map Periodic Cleanup
+
+When nethadone runs for more than a couple of days, an accumulation
+of (saddr, daddr) pairs begin to slow things down though only
+a relatively small number of IPs within a 10-20m window are really 
+needed. A restart fixes the issue but this should be handled.
+
+## 
+
+## Other devices
+
+### Orange PI R1
+
+While a lower-end device, it has 2 100MBit ethernet ports plus more 
+functional wifi and could be a cheaper and easier alternative than 
+a R1+, especially for testing and trial purposes.
+
+The sunxi-current kernel provided by [daeuniverse](https://github.com/daeuniverse/armbian-btf-kernel) doesn't seem to have 
+`CONFIG_BPFFILTER` enabled, which prevents the BPF programs from 
+being added.
+
+This issue has more details on the error: https://github.com/armbian/build/pull/2277/files
+

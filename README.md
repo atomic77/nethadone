@@ -1,34 +1,87 @@
-## Nethadone
+# Nethadone
 
-A pihole-inspired adaptive L4 router to discourage addictive web usage.
+Nethadone is an adaptive L4 router built to discourage and train users on a network
+out of compulsive or addictive web usage.
 
-## Background
+It uses [eBPF](https://ebpf.io/) to efficiently monitor and dynamically adjust traffic
+speeds
+to gently nudge users off of configured sites. The goal is to
+get the benefit of these platforms (occasional surfing, ability to respond to messages, 
+etc.) while avoiding the downsides of excessive use.
 
-Social media addiction is a topic that has received growing attention in recent years. My own struggle with this has been ongoing. After years of improvised cold-turkey style solutions (modifying my hosts file, applying filters in a pihole and screen time filters on my phone), I decided to see if I could come up with something a little more sophisticated. 
-
-Ironically, the inspiration came from a flaky orangepi zero I had reinstalled pihole onto. I noticed that a site I was in a doom-scroll on was having trouble loading, and this annoyed me to the point that I stopped. After checking to see if it was the DNS resolution failing, I realized I had stumbled onto something.
 
 ## Getting Started
 
-Not quite usable yet :) Stay tuned. 
+Nethadone is in active development and only been tested on an 
+[Orange Pi R1 Plus](http://www.orangepi.org/orangepiwiki/index.php/Orange_Pi_R1_Plus).
+If you are interested in giving it a try on a similar device,
+please check out `doc/install.md` for details, feedback and
+contributions are more than welcome!
 
+For development or testing on a local VM, please see 
+`doc/development.md` 
+
+## How does it work? 
+
+Nethadone leverages several eBPF programs to monitor and classify
+routed traffic as it passes through. Based on the configured
+policies, packets are slotted into a series of bandwidth classes.
+The default configuration corresponds roughly to:
+
+* Full throttle (no restriction)
+* Decent DSL connection
+* Good 4G connection
+* Flaky 3G connection
+* A top of the line US Robotics 56K modem
+
+As a user continues to compulsively use a given site, traffic 
+to flagged IPs gradually works its way down the list above.
+
+Nethadone currently only supports a single policy, for more details
+see `policy/README.md`.
+
+For more details on bandwidth classes (i.e. qdisc configuration), see `doc/qdisc.md`
+
+### Traffic flow
+
+The following diagram shows the approximate life of a packet as
+it flows through the nethadone router, and 
+most of the moving parts involved:
+
+![overview](doc/nethadone-overview.png)
 ## Design Goals
 
 * Protect all devices in a network with zero client-side configuration or software
 * Dynamically throttle traffic from clients to configurable sites or groups of sites to "train" good habits [1]
 * Use only IP and (sniffed) DNS (i.e. as close to a pure L4 solution as possible)
 * Introduce no latency on "good" traffic
-* Usable on minimal hardware like an SBC
-
-What I came up with is an eBPF-based tool that is intended to be run on a SBC with two network interfaces, and introduces an additional hop between your cable modem / fiber / dsl etc. and your local access point/wifi router.
-
-## How does it work? 
-
-A Traffic Control (TC) eBPF program is attached to the interfaces on the device, and monitors bandwidth used from all devices on the network. A second eBPF program sniffs for DNS packets , in order to provide a means to classify destination IPs . Based on traffic patterns, a steadily increasing amount of latency is introduced to "bad" traffic until some window of time passed, after which . The mechanism is described in more detail in this paper [2]
+* Usable on minimal hardware like an Orange Pi R1plus or similar
 
 
+## References & Acknowlegements
 
-[1] What is a "good habit" you say? A blunt filter of all Facebook traffic might be better than rotting away all day fighting with people on the other side of the political spectrum. But it blocks positive uses for these platforms. I've always admired people who have the discipline to drop in to Facebook or Instagram, respond to a message or browse for a couple of minutes to take a break, and then pop back up without getting sucked in. This type of usage should be rewarded with fast responses, while doom-scrolls should get progressively slower to nudge the user off.
-[2] https://netdevconf.info//0x14/pub/papers/55/0x14-paper55-talk-paper.pdf
+### Projects
+
+A number of projects were invaluable reference points
+in trying to understand the intracies of eBPF:
+
+* [Dae](https://github.com/daeuniverse/dae/)
+* [Flat](https://github.com/pouriyajamshidi/flat)
+* [Grafana Beyla](https://github.com/grafana/beyla)
+
+While a very different technical solution, the product experience of [Pi-hole](https://github.com/pi-hole/pi-hole) from the users' persective is a huge inspiration for nethadone.
 
 
+### Papers and Books
+
+[Learning eBPF - Full Book](https://cilium.isovalent.com/hubfs/Learning-eBPF%20-%20Full%20book.pdf)
+
+[Replacing HTB with EDT and BPF](https://netdevconf.info//0x14/pub/papers/55/0x14-paper55-talk-paper.pdf)
+
+[Scaling Linux Traffic
+Shaping with BPF](http://vger.kernel.org/lpc_bpf2018_talks/lpc-bpf-2018-shaping.pdf)
+
+
+[Understanding tc “direct action” mode for BPF](https://qmonnet.github.io/whirl-offload/2020/04/11/tc-bpf-direct-action/)
+
+[Linux Advanced Routing & Traffic Control HOWTO](https://lartc.org/lartc.html)

@@ -1,34 +1,24 @@
-## QDisc Notes
+## QDisc Traffic Control Setup
 
-For reasons I've yet to understand, less data that goes into `lan0` seems to go through 
-the qdisc than if throttling is attempted on `eth0`. But this prevents us from applying
-source-based filtering, since by the time the packet arrives on `eth0`, it has been natted
-to appear as if it's coming from the ip of `eth0`. 
+On startup, Nethadone sets up a configurable number of "bandwidth classes" to enable a steady degradation
+of service to flagged addresses. The design is inspired by this 
+[netdev 0x14 paper](https://netdevconf.info//0x14/pub/papers/55/0x14-paper55-talk-paper.pdf), 
+and the examples in the [Traffic Control HOWTO](https://lartc.org/lartc.html).
 
-The following qdisc structure still allows much more data through on `iperf3` tests than these 
-rate limits suggest, and the quantity of data that runs through the bpf classifier is maybe 10-25%
-of the actual transfer, but it does a good enough job of deteriorating traffic that we can 
-leave this aside for another day.
+The following is a rough representation of the qdisc layout:
 
-Example of qdisc setup that we can use to steadily deteriorate traffic:
+![QDisc layout](qdisc_example.png)
 
-```bash
+The throttler BPF is a templated C file that is dynamically
+generated, recompiled and attached to the `clsact` qdisc on the 
+LAN-side interface based on traffic patterns. Its sole responsibility is to assign traffic to classes `0x10`, `0x20`, .. etc.
+up to a configurable max. 
 
-sudo tc qdisc delete dev lan0 root
+HTB / Prio is the default, and is configured with no artificial delays (at least not intentionally :). 
+Based on the configured policy, the throttler will dynamically 
+adjust the class of outbound traffic to different classes from `0x20` upwards. 
+These have [`netem`](https://www.man7.org/linux/man-pages/man8/tc-netem.8.html) qdiscs configured with increasing delay and latency and reduced bandwidth. 
 
-sudo tc qdisc add dev lan0 root handle 1: htb default 10
-
-sudo tc class add dev lan0 parent 1: classid 1:1 htb rate 100Mbit ceil 100Mbit
-
-sudo tc class add dev lan0 parent 1:1 classid 1:10 htb rate 95Mbit ceil 100Mbit
-sudo tc class add dev lan0 parent 1:1 classid 1:20 htb rate 500kbit ceil 500kbit
-sudo tc class add dev lan0 parent 1:1 classid 1:30 htb rate 50kbit ceil 50kbit
-
-sudo tc qdisc add dev lan0 parent 1:10 handle 10: sfq perturb 10
-sudo tc qdisc add dev lan0 parent 1:20 handle 20: netem delay 25ms 5ms
-sudo tc qdisc add dev lan0 parent 1:30 handle 30: netem delay 250ms 50ms
-
-sudo tc filter add dev lan0 protocol ip parent 1:0 bpf obj ebpf/throttle.o classid 1: direct-action
-
-```
+The intended effect for a user on the network accessing a restricted site is as if their
+connection starts as a fast cable modem and degrades down to something like a 2G or 3G cellular connection. The rates and number of classes are configurable in the `nethadone.yml` file.
 

@@ -1,0 +1,75 @@
+<mxfile host="Electron" modified="2024-07-19T15:14:07.653Z" agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) draw.io/24.6.1 Chrome/124.0.6367.207 Electron/30.0.6 Safari/537.36" etag="1L4AlbgkoIfueUnoJHSc" version="24.6.1" type="device">
+  <diagram id="6a731a19-8d31-9384-78a2-239565b7b9f0" name="Page-1">
+    <mxGraphModel dx="1562" dy="909" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" background="none" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="kAfsiHfk6KGrJ5GCvc58-2258" value="&lt;div style=&quot;font-size: 14px;&quot;&gt;&lt;br style=&quot;font-size: 14px;&quot;&gt;&lt;/div&gt;&lt;div style=&quot;font-size: 14px;&quot;&gt;&lt;br style=&quot;font-size: 14px;&quot;&gt;&lt;/div&gt;&lt;div style=&quot;font-size: 14px;&quot;&gt;&lt;br style=&quot;font-size: 14px;&quot;&gt;&lt;/div&gt;&lt;div style=&quot;font-size: 14px;&quot;&gt;&lt;br style=&quot;font-size: 14px;&quot;&gt;&lt;/div&gt;&lt;div style=&quot;font-size: 14px;&quot;&gt;&lt;br style=&quot;font-size: 14px;&quot;&gt;&lt;/div&gt;&lt;div style=&quot;font-size: 14px;&quot;&gt;&lt;br style=&quot;font-size: 14px;&quot;&gt;&lt;/div&gt;&lt;div style=&quot;font-size: 14px;&quot;&gt;&lt;br&gt;&lt;/div&gt;13.21.34.55" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;endArrow=none;endFill=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;labelPosition=right;verticalLabelPosition=bottom;align=left;verticalAlign=top;labelBackgroundColor=none;fontSize=14;" parent="1" source="FAB3joIO5wq1E08m3I34-2163" target="kAfsiHfk6KGrJ5GCvc58-2263" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="738.98" y="255" as="sourcePoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="kAfsiHfk6KGrJ5GCvc58-2267" value="&lt;div&gt;192.168.7.2&amp;nbsp; &amp;nbsp; &amp;nbsp; &amp;nbsp; &amp;nbsp; &amp;nbsp; 192.168.7.1&lt;br&gt;&lt;/div&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;fontSize=14;labelPosition=center;verticalLabelPosition=top;align=center;verticalAlign=bottom;strokeColor=default;startArrow=none;startFill=0;endArrow=none;endFill=0;labelBackgroundColor=none;" parent="1" source="kAfsiHfk6KGrJ5GCvc58-2265" target="kAfsiHfk6KGrJ5GCvc58-2264" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="kAfsiHfk6KGrJ5GCvc58-2265" value="&lt;div style=&quot;font-size: 14px;&quot;&gt;&lt;font style=&quot;font-size: 14px;&quot;&gt;Nethadone Router&lt;/font&gt;&lt;/div&gt;&lt;div style=&quot;font-size: 14px;&quot;&gt;&lt;font style=&quot;font-size: 14px;&quot;&gt;(OPi R1+ or similar)&lt;/font&gt;&lt;/div&gt;" style="shape=image;html=1;verticalAlign=top;verticalLabelPosition=bottom;labelBackgroundColor=none;imageAspect=0;aspect=fixed;image=https://cdn2.iconfinder.com/data/icons/crystalproject/128x128/apps/hardware.png" parent="1" vertex="1">
+          <mxGeometry x="650" y="457" width="128" height="128" as="geometry" />
+        </mxCell>
+        <mxCell id="kAfsiHfk6KGrJ5GCvc58-2266" value="&lt;font style=&quot;font-size: 14px;&quot;&gt;192.168.0.176&amp;nbsp; &amp;nbsp; &amp;nbsp; &amp;nbsp; &amp;nbsp; &amp;nbsp;192.168.0.1&lt;/font&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;exitX=1;exitY=0.5;exitDx=0;exitDy=0;endArrow=none;endFill=0;labelBackgroundColor=none;" parent="1" source="kAfsiHfk6KGrJ5GCvc58-2265" target="kAfsiHfk6KGrJ5GCvc58-2263" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="FAB3joIO5wq1E08m3I34-2164" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=none;endFill=0;" edge="1" parent="1" source="FAB3joIO5wq1E08m3I34-2163" target="2109">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="FAB3joIO5wq1E08m3I34-2163" value="Cable / DSL / Fiber" style="image;html=1;image=img/lib/clip_art/networking/Modem_128x128.png;labelBackgroundColor=none;" vertex="1" parent="1">
+          <mxGeometry x="674" y="230" width="80" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="FAB3joIO5wq1E08m3I34-2165" value="" style="group;labelPosition=center;verticalLabelPosition=top;align=center;verticalAlign=bottom;" vertex="1" connectable="0" parent="1">
+          <mxGeometry x="1040" y="400" width="340" height="405" as="geometry" />
+        </mxCell>
+        <mxCell id="2093" value="&lt;div style=&quot;font-size: 18px;&quot;&gt;192.168.0.0/24&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;strokeColor=none;fillColor=#BAC8D3;fontSize=18;fontColor=#23445D;align=center;opacity=60;labelPosition=center;verticalLabelPosition=top;verticalAlign=bottom;" parent="FAB3joIO5wq1E08m3I34-2165" vertex="1">
+          <mxGeometry x="20" width="240" height="400" as="geometry" />
+        </mxCell>
+        <mxCell id="kAfsiHfk6KGrJ5GCvc58-2259" value="" style="shape=mxgraph.cisco.computers_and_peripherals.pc;sketch=0;html=1;pointerEvents=1;dashed=0;fillColor=#036897;strokeColor=#ffffff;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" parent="FAB3joIO5wq1E08m3I34-2165" vertex="1">
+          <mxGeometry x="104" y="62" width="78" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="kAfsiHfk6KGrJ5GCvc58-2260" value="" style="shape=mxgraph.cisco.computers_and_peripherals.pc;sketch=0;html=1;pointerEvents=1;dashed=0;fillColor=#036897;strokeColor=#ffffff;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" parent="FAB3joIO5wq1E08m3I34-2165" vertex="1">
+          <mxGeometry x="101" y="167.5" width="78" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="FAB3joIO5wq1E08m3I34-2172" value="" style="verticalLabelPosition=bottom;verticalAlign=top;html=1;shadow=0;dashed=0;strokeWidth=1;shape=mxgraph.android.phone2;strokeColor=#c0c0c0;" vertex="1" parent="FAB3joIO5wq1E08m3I34-2165">
+          <mxGeometry x="117.5" y="270" width="45" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="kAfsiHfk6KGrJ5GCvc58-2263" value="" style="image;html=1;image=img/lib/clip_art/networking/Wireless_Router_128x128.png" parent="FAB3joIO5wq1E08m3I34-2165" vertex="1">
+          <mxGeometry x="-20" width="80" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="FAB3joIO5wq1E08m3I34-2166" value="" style="group" vertex="1" connectable="0" parent="1">
+          <mxGeometry x="30" y="400" width="340" height="400" as="geometry" />
+        </mxCell>
+        <mxCell id="2092" value="&lt;div style=&quot;font-size: 18px;&quot;&gt;&lt;span style=&quot;background-color: initial; font-size: 18px;&quot;&gt;192.168.7.0/24&lt;/span&gt;&lt;br style=&quot;font-size: 18px;&quot;&gt;&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;strokeColor=#82b366;fillColor=#d5e8d4;fontSize=18;align=center;opacity=60;labelPosition=center;verticalLabelPosition=top;verticalAlign=bottom;" parent="FAB3joIO5wq1E08m3I34-2166" vertex="1">
+          <mxGeometry x="90" width="230" height="400" as="geometry" />
+        </mxCell>
+        <mxCell id="kAfsiHfk6KGrJ5GCvc58-2264" value="" style="image;html=1;image=img/lib/clip_art/networking/Wireless_Router_128x128.png" parent="FAB3joIO5wq1E08m3I34-2166" vertex="1">
+          <mxGeometry x="280.0028571428572" y="140" width="77.71428571428571" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="kAfsiHfk6KGrJ5GCvc58-2268" value="" style="shape=mxgraph.cisco.computers_and_peripherals.pc;sketch=0;html=1;pointerEvents=1;dashed=0;fillColor=#036897;strokeColor=#ffffff;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" parent="FAB3joIO5wq1E08m3I34-2166" vertex="1">
+          <mxGeometry x="167.11285714285714" y="60" width="75.77142857142857" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="kAfsiHfk6KGrJ5GCvc58-2269" value="" style="shape=mxgraph.cisco.computers_and_peripherals.pc;sketch=0;html=1;pointerEvents=1;dashed=0;fillColor=#036897;strokeColor=#ffffff;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" parent="FAB3joIO5wq1E08m3I34-2166" vertex="1">
+          <mxGeometry x="167.1157142857143" y="170" width="75.77142857142857" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="FAB3joIO5wq1E08m3I34-2170" value="" style="verticalLabelPosition=bottom;verticalAlign=top;html=1;shadow=0;dashed=0;strokeWidth=1;shape=mxgraph.android.phone2;strokeColor=#c0c0c0;" vertex="1" parent="FAB3joIO5wq1E08m3I34-2166">
+          <mxGeometry x="182.5" y="280" width="45" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="FAB3joIO5wq1E08m3I34-2168" value="Nethadone Protected" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="160.00142857142856" y="800" width="160" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="2109" value="Internet" style="shape=mxgraph.cisco.storage.cloud;html=1;dashed=0;strokeColor=#23445D;fillColor=#ffffff;strokeWidth=2;fontFamily=Helvetica;fontSize=24;fontColor=#23445D;align=center;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry x="623.6600000000001" y="30" width="180.68571428571428" height="106" as="geometry" />
+        </mxCell>
+        <mxCell id="FAB3joIO5wq1E08m3I34-2167" value="Open Network" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="1125" y="800" width="110" height="30" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
