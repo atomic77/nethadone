@@ -44,7 +44,7 @@ fi
 
 set -e
 
-truncate -s 3G $img
+truncate -s 4G $img
 loop=$(sudo losetup --partscan --show --nooverlap -f $img)
 # This may fail on older versions of growpart and require
 # patching, due to the kernel version in the image build
@@ -53,9 +53,10 @@ loop=$(sudo losetup --partscan --show --nooverlap -f $img)
 sudo growpart ${loop} 1
 sudo e2fsck -p -f ${loop}p1
 sudo resize2fs ${loop}p1
-printf "Resized image to 3G - fdisk output should reflect this\n"
+printf "Resized image to 4G - fdisk output should reflect this\n"
 sudo fdisk -l $loop
-sudo mount -o remount ${loop}p1 ${mnt}
+sudo mount ${loop}p1 ${mnt}
+sudo mount --bind /dev ${mnt}/dev
 
 # Copy files into image
 sudo mkdir ${mnt}/tmp/overlay

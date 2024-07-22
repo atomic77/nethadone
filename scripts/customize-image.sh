@@ -10,7 +10,7 @@ apt-get install -y apt-transport-https ca-certificates curl clang llvm jq \
         python3-dnslib python3-cachetools # for tcpconnect dns tracing in python
 
 # For ubuntu jammy
-apt-get install linux-tools-common
+apt-get install linux-tools-common -y
 
 wget https://go.dev/dl/go1.22.3.linux-arm64.tar.gz
 rm -rf /usr/local/go && tar -C /usr/local -xzf go1.22.3.linux-arm64.tar.gz
