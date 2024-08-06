@@ -1,0 +1,124 @@
+
+name: armbian-btf-kernel-build
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_repo_branch:
+        required: true
+        default: "main"
+
+jobs:
+  generate_release_info:
+    runs-on: ubuntu-22.04
+    outputs:
+      release_name: ${{ steps.generate_release_name.outputs.release_name }}
+    steps:
+      - id: generate_release_name
+        run: |
+          echo "release_name=btf-kernel" >> "$GITHUB_OUTPUT"
+        #   echo "release_name=btf-kernel-$(date -u -I)" >> "$GITHUB_OUTPUT"
+
+  build:
+    # Adapted from build.yml at https://github.com/daeuniverse/armbian-btf-kernel.
+    # Currently only building for Orange Pi R1 as armbian-btf-kernel has a working
+    # kernel for the R1Plus. Enable for other boards eventually in order to support
+    # more recent armbain builds
+    runs-on: ubuntu-22.04
+    needs: generate_release_info
+    strategy:
+        matrix:
+          include:
+            # 'legacy' as of armbian 24.8 based on Ubuntu Noble uses 6.1 kernel which is what has been tested. 
+            # 6.6 kernels untested so far
+            - boardfamily: sunxi
+              branch: legacy
+              representative: orangepi-r1
+            # TODO Enable for R1plus and others as needed
+            # - boardfamily: rockchip64
+            #   branch: current
+            #   representative: rockpro64
+        fail-fast: false
+    env:
+      BOARD_FAMILY: ${{ matrix.boardfamily }}
+      BRANCH: ${{ matrix.branch }}
+      BOARD_NAME: ${{ matrix.representative }}
+
+    steps:
+      - name: cleanup #https://github.com/actions/checkout/issues/211
+        run: |
+          sudo chown -R $USER:$USER $GITHUB_WORKSPACE
+
+      - uses: actions/checkout@v3
+        with:
+          repository: armbian/build
+          path: build
+          ref: ${{ github.event.inputs.build_repo_branch }}
+
+
+      - name: Build BTF-enabled kernel
+        run: |
+          cd build
+          # Enable BTF.
+          echo "# BTF/BPF options
+          CONFIG_VIDEO_SONY_BTF_MPX=m
+          CONFIG_DEBUG_INFO_BTF=y
+          CONFIG_PAHOLE_HAS_SPLIT_BTF=y
+          CONFIG_DEBUG_INFO_BTF_MODULES=y
+          BPF_JIT=y
+          CONFIG_ARCH_WANT_DEFAULT_BPF_JIT=y
+          CONFIG_BPF_SYSCALL=y
+          CONFIG_BPF_JIT=y
+          CONFIG_BPF=y
+          CONFIG_HAVE_E
+          CONFIG_BPF_JIT_DEFAULT_ON=y
+          CONFIG_BPF_LSM=y
+          CONFIG_CGROUP_BPF=y
+          CONFIG_IPV6_SEG6_BPF=y
+          CONFIG_NETFILTER_XT_MATCH_BPF=m
+          CONFIG_BPFILTER=y
+          CONFIG_BPFILTER_UMH=m
+          CONFIG_NET_CLS_BPF=m
+          CONFIG_NET_ACT_BPF=m
+          CONFIG_LWTUNNEL_BPF=y
+          CONFIG_BPF_EVENTS=y
+          CONFIG_TEST_BPF=m
+          # Other options from armbian-btf-kernel repo
+          CONFIG_DEBUG_INFO=y
+          CONFIG_DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT=y
+          CONFIG_DEBUG_INFO_COMPRESSED_ZLIB=y
+          CONFIG_KPROBE_EVENTS=y
+          CONFIG_BPF_EVENTS=y
+          CONFIG_RING_BUFFER=y
+          CONFIG_TRACING=y
+          CONFIG_STACKTRACE=y
+          CONFIG_NOP_TRACER=y
+          CONFIG_BINARY_PRINTF=y
+          CONFIG_EVENT_TRACING=y
+          CONFIG_TRACE_CLOCK=y
+          CONFIG_TASKS_RCU=y
+          # Added after discovering lack of /sys/kernel/debug/tracing/uprobe_events file
+          CONFIG_KPROBE_EVENTS=y
+          CONFIG_UPROBE_EVENTS=y" >> config/kernel/linux-"$BOARD_FAMILY"-"$BRANCH".config
+
+          # Compile kernel only. Recent changes to armbian make this simpler 
+          ./compile.sh kernel ALLOW_ROOT=yes RELEASE=noble BOARD="$BOARD_NAME" BRANCH="$BRANCH" 
+
+      - name: Extract Output
+        id: output
+        run: |
+          cd build/output/debs/
+          outfile=kernel-${BRANCH}-${BOARD_FAMILY}-${BOARD_NAME}.tar.gz 
+          tar czf ${outfile} linux-*-${BRANCH}-${BOARD_FAMILY}_*.deb
+          fpath=$(realpath ${outfile})
+          echo "FILE_DISPLAY_NAME=${outfile}" >> $GITHUB_OUTPUT
+          echo "FILEPATH=${fpath}" >> $GITHUB_OUTPUT
+
+      - name: Upload binaries to release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_name: atomic77/nethadone
+          file: ${{ steps.output.outputs.FILEPATH }}
+          asset_name: ${{ steps.output.outputs.FILE_DISPLAY_NAME }}
+          tag: ${{ needs.generate_release_info.outputs.release_name }}
+          overwrite: true
