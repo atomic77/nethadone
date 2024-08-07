@@ -12,14 +12,16 @@ etc.) while avoiding the downsides of excessive use.
 
 ## Getting Started
 
-Nethadone is in active development and only been tested on an 
-[Orange Pi R1 Plus](http://www.orangepi.org/orangepiwiki/index.php/Orange_Pi_R1_Plus).
-If you are interested in giving it a try on a similar device,
-please check out `doc/install.md` for details, feedback and
-contributions are more than welcome!
+Nethadone is in active development and has been tested on the following devices:
+
+* [Orange Pi R1 Plus](http://www.orangepi.org/orangepiwiki/index.php/Orange_Pi_R1_Plus)
+* [Orange Pi R1](http://www.orangepi.org/orangepiwiki/index.php/Orange_Pi_R1)
+
+Any similar device using an armv7 or arm64 chipset should work.
+Please check out [doc/install.md](doc/install.md) for details.
 
 For development or testing on a local VM, please see 
-`doc/development.md` 
+[doc/development.md](doc/development.md)
 
 ## How does it work? 
 
@@ -38,9 +40,9 @@ As a user continues to compulsively use a given site, traffic
 to flagged IPs gradually works its way down the list above.
 
 Nethadone currently only supports a single policy, for more details
-see `policy/README.md`.
+see [policy/README.md](policy/README.md).
 
-For more details on bandwidth classes (i.e. qdisc configuration), see `doc/qdisc.md`
+For more details on bandwidth classes (i.e. qdisc configuration), see [doc/qdisc.md](doc/qdisc.md).
 
 ### Traffic flow
 

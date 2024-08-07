@@ -25,7 +25,7 @@ vmlinux.h:
 	bpftool btf dump file /sys/kernel/btf/vmlinux format c > vmlinux.h		
 
 build-throttler:
-	clang -g -O2 -I/usr/include/aarch64-linux-gnu -Wall -target bpf -c throttle.bpf.c -o throttle.o
+	clang -g -O2 -I/usr/include/aarch64-linux-gnu -I/usr/arm-linux-gnueabi/include  -Wall -target bpf -c throttle.bpf.c -o throttle.o
 
 rtarg = dnspkt
 direction = ingress

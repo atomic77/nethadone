@@ -18,12 +18,10 @@ Nethadone has been tested on:
     * 1GB RAM
     * 2x GBit ethernet
     * Wifi (not functional w/ Armbian yet)
-
-In progress:
-
 * Orange Pi R1
     * 32-bit Allwinner H3
     * 2 x 100Mbit ethernet
+    * Wifi (working)
     * 256MB / 512MB RAM 
 
 In theory, any device with two network interfaces should work, but I have not had a chance to test others.
@@ -32,13 +30,18 @@ An SD card 16GB or greater is recommended.
 
 ### OS 
 
-Ubuntu 22.04 LTS or derivative (eg. Armbian 23.8)
+Ubuntu-based 22.04 LTS or derivative (eg. Armbian 23.8)
+Ubuntu 22.04 or 24.04 LTS and derivatives (i.e. Armbian) are working
 
 Other OS versions may work, but the further away from Linux 
 6.1 (either newer or older), the more likely eBPF
 issues may be encountered.
 
-## OS Setup
+## OS Setup - Orange Pi R1+ (Arm64)
+
+> [!NOTE]  
+> I am in the process of streamlining this installation process, 
+> first for the armv7 Orange Pi R1 and eventually for the R1+. 
 
 ### Base image
 For the Orange Pi R1+, you need to get the Armbian 23.8.1 Jammy build:
@@ -48,11 +51,6 @@ https://xogium.performanceservers.nl/archive/orangepi-r1plus/archive/Armbian_23.
 This is because we will need to use a BTF-enabled kernel provided
 by [daeuniverse](https://github.com/daeuniverse/armbian-btf-kernel),
 and that is the latest version of Armbian provided there.
-
-A TODO item is to provide updated linux kernels for recent versions 
-of Armbian, or an easy to use build script using the Armbian 
-customize-image hook that preps the image plus the required kernel
-options. 
 
 ### Image prep
 
