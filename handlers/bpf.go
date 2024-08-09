@@ -88,28 +88,41 @@ func Initialize() {
 }
 
 func ApplyPolicies(ipPolicies *[]models.IpPolicy) {
-	rebuildBpf("ebpf/throttle.bpf.c.tpl", "ebpf/throttle.bpf.c", ipPolicies)
-	reattachThrottler(config.Cfg.LanInterface, tc.HandleMinEgress)
+	targFile, err := os.CreateTemp("", "throttle-*.bpf.c")
+	if err != nil {
+		log.Fatal("could not create throttler file: ", err)
+	}
+	objFile, err := os.CreateTemp("", "throttle-*.o")
+	if err != nil {
+		log.Fatal("could not create throttler object file: ", err)
+	}
+
+	rebuildBpf("throttle.bpf.c.tpl", targFile, objFile, ipPolicies)
+	reattachThrottler(objFile, config.Cfg.LanInterface, tc.HandleMinEgress)
+	os.Remove(targFile.Name())
+	os.Remove(objFile.Name())
 }
 
-func rebuildBpf(tplfile string, target string, ipPolicies *[]models.IpPolicy) {
+func rebuildBpf(tplfile string, target *os.File, objFile *os.File, ipPolicies *[]models.IpPolicy) {
 	log.Println("Rebuilding with ", len(*ipPolicies), " throttle targets from policy database")
-
-	f, err := os.Create(target)
-	if err != nil {
-		log.Fatal("failed to create rendered file ", err)
-	}
-	tpl := template.Must(template.ParseFiles(tplfile))
+	tpl := template.Must(template.ParseFS(EmbedThrottlerCode, tplfile))
 	type fdata struct {
 		IpPolicies *[]models.IpPolicy
 	}
-	err = tpl.Execute(f, fdata{IpPolicies: ipPolicies})
+
+	log.Println("Temporary file ", target.Name())
+	err := tpl.Execute(target, fdata{IpPolicies: ipPolicies})
 	if err != nil {
 		log.Fatal("failed to render file ", err)
 	}
 	// FIXME There surely must be a better way of doing this dynamically
-	cmd := exec.Command("make", "build-throttler")
-	cmd.Dir = "ebpf/"
+	cmd := exec.Command(
+		"clang", "-g", "-O2",
+		// Include both armv7 and aarch64 include folders
+		"-I/usr/include/aarch64-linux-gnu", "-I/usr/arm-linux-gnueabi/include",
+		"-Wall", "-target", "bpf", "-c", target.Name(), "-o", objFile.Name(),
+	)
+	cmd.Dir = os.TempDir()
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		log.Fatal("failed to rebuild throttler eBPF, out: ", string(out), " err: ", err)
@@ -144,7 +157,7 @@ func cleanupThrottler(iface *net.Interface) {
 
 }
 
-func reattachThrottler(ifname string, direction uint32) {
+func reattachThrottler(objFile *os.File, ifname string, direction uint32) {
 
 	log.Println("(Re)attaching throttler BPF to if ", ifname, " direction ", direction)
 
@@ -157,7 +170,7 @@ func reattachThrottler(ifname string, direction uint32) {
 	cleanupThrottler(iface)
 
 	BpfCtx.ThrottleObjs = &throttleObjects{}
-	spec, err := ebpf.LoadCollectionSpec("ebpf/throttle.o")
+	spec, err := ebpf.LoadCollectionSpec(objFile.Name())
 	if err != nil {
 		log.Fatal("failed to load spec ", err)
 	}
