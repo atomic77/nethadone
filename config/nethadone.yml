@@ -7,6 +7,18 @@ cfg_db: "/root/cfg.db"
 dns_db: "/root/dns.db"
 prometheus_url: "http://localhost:9090"
 
+###
+# Operational parameters
+
+# How frequently we parse the eBPF-level maps for ip bandwidth usage
+# For sites with many clients, and on lower-end hardware such as 
+# 32-bit orange pi zero/r1, this shouldn't be more frequent than 
+# 30s until the parsing code can be optimized
+map_collection_interval: 30s
+
+# How frequently we check for policy violations; 
+policy_check_interval: 1m
+
 # Parameters for the htb # netem qdiscs and classes we'll create on the fly
 # WanMbs represents the max bandwidth of your downstream internet connection
 # The MinRateKbs and MaxDelayMs represent the maximum bandwidth degradation ;
@@ -30,7 +42,7 @@ min_rate_kbs: 50
 # this can be set to a very low number like 0. For more bandwidth heavy
 # sites, a larger number may make sense. 
 activity_threshold_bytes: 1
-# How many minutes before we'll consider a change to policy;
+# How long before we'll consider a change to policy;
 # setting this lower will cause clients to be moved up and
 # down bandwidth classes faster
-policy_backoff_minutes: 2
+policy_backoff_interval: 2m

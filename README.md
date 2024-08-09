@@ -54,11 +54,15 @@ most of the moving parts involved:
 ## Design Goals
 
 * Protect all devices in a network with zero client-side configuration or software
-* Dynamically throttle traffic from clients to configurable sites or groups of sites to "train" good habits [1]
+* Dynamically throttle traffic from clients to configurable sites or groups of sites to "train" good habits
 * Use only IP and (sniffed) DNS (i.e. as close to a pure L4 solution as possible)
 * Introduce no latency on "good" traffic
 * Usable on minimal hardware like an Orange Pi R1plus or similar
 
+## Current milestones 
+
+Milestone 8: Improved overall installation experience and support
+for lower-end 32-bit arm devices such as Orange Pi Zero/R1.
 
 ## References & Acknowlegements
 

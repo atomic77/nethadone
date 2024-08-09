@@ -30,9 +30,10 @@ func GetSrcGlobUsage(rate int, mins int, k int, above bool) model.Vector {
 	tm := time.Now().Add(-1 * dr)
 	result, warnings, err := queryAPI.Query(context.Background(), pql, tm)
 	if err != nil {
-		log.Println("error trying to query prometheus: ", err, warnings)
-	}
-	sample := result.(model.Vector)
+		log.Println("unable to query prometheus, policy changes will not be possible: ", err, warnings)
+		return model.Vector{}
+	} else {
 
-	return sample
+		return result.(model.Vector)
+	}
 }

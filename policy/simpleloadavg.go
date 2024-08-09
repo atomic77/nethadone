@@ -74,7 +74,7 @@ func increaseThrottling() bool {
 			continue
 		}
 
-		backOff := time.Now().Add(time.Minute * time.Duration(config.Cfg.PolicyBackoffMinutes))
+		backOff := time.Now().Add(config.Cfg.PolicyBackoffInterval)
 		if p.Tstamp.After(backOff) {
 			log.Println("too soon to update policy for ", src_ip, glob)
 		} else if p.Class > config.Cfg.NumQdiscClasses*10 {
@@ -109,7 +109,7 @@ func decreasingThrottling() bool {
 
 		// After testing set this back to 5 or some more sensible default
 		// from configuration
-		backOff := time.Now().Add(time.Minute * -1)
+		backOff := time.Now().Add(config.Cfg.PolicyBackoffInterval)
 		if p.Tstamp.After(backOff) {
 			log.Println("too soon to update policy for ", src_ip, glob)
 		} else if p.Class <= 10 {
@@ -126,8 +126,8 @@ func decreasingThrottling() bool {
 }
 
 func pollPolicyCheck() {
-	log.Println("Setting up metrics collector")
-	for range time.Tick(time.Minute * 1) {
+	log.Println("Setting up policy checker on ", config.Cfg.PolicyCheckInterval, " interval ")
+	for range time.Tick(config.Cfg.PolicyCheckInterval) {
 		log.Println("Checking policy ")
 		changed := increaseThrottling()
 		changed = changed || decreasingThrottling()
@@ -152,9 +152,4 @@ func applyPolicies() {
 	}
 	handlers.ApplyPolicies(&allPolicies)
 
-}
-func pollPolicyApply() {
-	for range time.Tick(time.Minute * 1) {
-		applyPolicies()
-	}
 }

@@ -3,6 +3,7 @@ package config
 import (
 	"log"
 	"os"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -16,6 +17,9 @@ var baseConfig = Config{
 	DnsDb:         "/root/dns.db",
 	PrometheusUrl: "http://localhost:9090",
 
+	MapCollectionInterval: time.Second * 30,
+	PolicyCheckInterval:   time.Minute * 1,
+
 	// Start degrading from 1mbit down to 10kbits, over 5 bandwidth classes
 	NumQdiscClasses: 5,
 	StartRateKbs:    1000,
@@ -23,7 +27,7 @@ var baseConfig = Config{
 	MinRateKbs:      50,
 
 	ActivityThresholdBytes: 100,
-	PolicyBackoffMinutes:   3,
+	PolicyBackoffInterval:  time.Minute * 3,
 }
 
 var Cfg = baseConfig
@@ -38,6 +42,11 @@ type Config struct {
 	CfgDb         string `yaml:"cfg_db"`
 	DnsDb         string `yaml:"dns_db"`
 	PrometheusUrl string `yaml:"prometheus_url"`
+
+	// Operational parameters for tuning use on SBCs with different
+	// capabilities
+	MapCollectionInterval time.Duration `yaml:"map_collection_interval"`
+	PolicyCheckInterval   time.Duration `yaml:"policy_check_interval"`
 
 	// Parameters for the htb / netem qdiscs and classes we'll create on the fly
 	// WanMbs represents the max bandwidth of your downstream internet connection
@@ -58,10 +67,10 @@ type Config struct {
 	// the number of bytes considered "active" for the prom rate
 	// queries
 	ActivityThresholdBytes int `yaml:"activity_threshold_bytes"`
-	// How many minutes before we'll consider a change to policy;
+	// How long before we'll consider a change to policy;
 	// setting this lower will cause clients to be moved up and
 	// down bandwidth classes faster
-	PolicyBackoffMinutes int `yaml:"policy_backoff_minutes"`
+	PolicyBackoffInterval time.Duration `yaml:"policy_backoff_interval"`
 }
 
 func ParseConfig(file string) {
