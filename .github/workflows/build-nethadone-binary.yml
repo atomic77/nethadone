@@ -1,0 +1,32 @@
+name: Build nethadone binary
+
+on:
+  workflow_dispatch:
+
+jobs:
+
+  build-nethadone-binary:
+    runs-on: ubuntu-22.04
+    steps:
+    - id: generate_release_name
+      run: |
+          echo "release_name=nethadone-$(date -u -I)" >> "$GITHUB_OUTPUT"
+
+    - uses: actions/checkout@v3
+
+    - name: Set up Go
+      uses: actions/setup-go@v3
+      with:
+        go-version: 1.22
+
+    - name: Build binaries
+      run: make all
+
+    - name: Upload binaries to release
+      uses: svenstaro/upload-release-action@v2
+      with:
+        repo_name: atomic77/nethadone
+        file: build/nethadone-*
+        tag: ${{ steps.generate_release_name.outputs.release_name }}
+        overwrite: true
+        file_glob: true

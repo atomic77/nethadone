@@ -17,8 +17,6 @@ import (
 	"net"
 )
 
-// var config Config
-
 func Index(c *fiber.Ctx) error {
 	// Render index
 	return c.Render("index", fiber.Map{

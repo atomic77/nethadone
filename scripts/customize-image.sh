@@ -67,6 +67,25 @@ WantedBy=multi-user.target
 
 EOF
 
+## FIXME The interfaces are not being read from config file due to a bug in nethadone.go
+cat <<EOF > /etc/systemd/system/nethadone.service
+[Unit]
+Description=Nethadone
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=root
+Restart=on-failure
+RuntimeMaxSec=86400
+
+ExecStart=/usr/local/bin/nethadone --config-file=/etc/nethadone.yml
+
+[Install]
+WantedBy=multi-user.target
+
+EOF
+
 systemctl daemon-reload
 systemctl enable prometheus
 

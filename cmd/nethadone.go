@@ -3,12 +3,14 @@ package main
 import (
 	"flag"
 	"log"
+	"net/http"
 
 	"github.com/alecthomas/repr"
 	"github.com/atomic77/nethadone/config"
 	"github.com/atomic77/nethadone/database"
 	"github.com/atomic77/nethadone/handlers"
 	"github.com/atomic77/nethadone/policy"
+	"github.com/atomic77/nethadone/views"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/adaptor"
 	"github.com/gofiber/fiber/v2/middleware/logger"
@@ -32,8 +34,8 @@ func main() {
 	database.Connect()
 	handlers.Initialize()
 
-	// Pass the engine to the Views
-	engine := html.New("./views", ".tpl")
+	// Use embedded templates
+	engine := html.NewFileSystem(http.FS(views.EmbedTemplates), ".tpl")
 	app := fiber.New(fiber.Config{
 		Views: engine,
 	})
