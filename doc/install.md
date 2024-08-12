@@ -1,101 +1,109 @@
 # Installation
 
-Nethadone still, unfortunately, requires a lot of manual steps to
-get working. 
-It is a priority to make this installation process less cumbersome,
-but anyone brave enough to attempt this in its current state
-has my infinite gratitude!
+## Requirements
 
-## Requirements 
+Nethadone has been tested on the latest Ubuntu Noble-based versions of
+Armbian (24.04 or 24.08). You can download an image for your board at
+the [Armbian download page](https://www.armbian.com/download/?tx_maker=xunlong).
 
-### Hardware 
 
-Nethadone has been tested on:
-
-* VMWare-based VM (for development)
-* Orange Pi R1Plus / R1Plus LTS
-    * 64-bit Rockchip RK3328
-    * 1GB RAM
-    * 2x GBit ethernet
-    * Wifi (not functional w/ Armbian yet)
-* Orange Pi R1
-    * 32-bit Allwinner H3
-    * 2 x 100Mbit ethernet
-    * Wifi (working)
-    * 256MB / 512MB RAM 
-
-In theory, any device with two network interfaces should work, but I have not had a chance to test others.
-
-An SD card 16GB or greater is recommended.
-
-### OS 
-
-Ubuntu-based 22.04 LTS or derivative (eg. Armbian 23.8)
-Ubuntu 22.04 or 24.04 LTS and derivatives (i.e. Armbian) are working
-
-Other OS versions may work, but the further away from Linux 
-6.1 (either newer or older), the more likely eBPF
-issues may be encountered.
-
-## OS Setup - Orange Pi R1+ (Arm64)
-
-> [!NOTE]  
-> I am in the process of streamlining this installation process, 
-> first for the armv7 Orange Pi R1 and eventually for the R1+. 
-
-### Base image
-For the Orange Pi R1+, you need to get the Armbian 23.8.1 Jammy build:
-
-https://xogium.performanceservers.nl/archive/orangepi-r1plus/archive/Armbian_23.8.1_Orangepi-r1plus_jammy_current_6.1.50.img.xz
-
-This is because we will need to use a BTF-enabled kernel provided
-by [daeuniverse](https://github.com/daeuniverse/armbian-btf-kernel),
-and that is the latest version of Armbian provided there.
-
-### Image prep
+## Image prep
 
 The contents of `scripts/customize-image.sh` will need to be run, 
-as root, in a fresh installation of the image you downlaoded. 
-If you want to save time, you can prep this on your machine using
-the chroot build script, eg:
+as root, in a fresh installation of the image you downloaded. 
+If you want to save time, you can prep using the chroot build 
+script, eg:
 
 ```bash
 cd scripts
-./build.sh -i /tmp/Armbian_23.8.1_Orangepi-r1plus_jammy_current_6.1.50.img -m ~/mnt
+./build.sh -i /tmp/Armbian_community_24.8.0-trunk.554_Orangepizero_noble_current_6.6.43.img -m ~/mnt -a arm
 ```
+
+`build.sh` makes liberal use of `sudo` so you may want to run this
+on a VM or cloud server with a fast link.
 
 Replace the `-i` and `-m` options with wherever you uncompressed the
 Armbian image above, and an empty folder to use for a mount point.
+The `-a` option indicates whether you are building for an arm64
+or armv7 image.
 
-`build.sh` is just a chroot wrapper that pre-installs everything
-required for nethadone to run; if you prefer to do the installation 
-of required packages directly, you can copy paste from 
-`customize-image.sh` after you have flashed the base image using 
+> [!TIP]  
+>  `build.sh` is just a chroot wrapper that pre-installs everything
+required for nethadone to run. If you prefer to do the installation 
+of required packages directly on the SBC, you can copy paste from 
+`customize-image.sh` after you have flashed the stock image using 
 [Balena etcher](https://etcher.balena.io/) or whichever flashing tool you prefer.
 
-### Nethadone installation
 
-Once you have the image flashed and the device booted, at this 
-point you should be ready to install Nethadone.
+At a high level, the `customize-image.sh` script:
 
-First clone the repo as regular user (but one with sudo privilege)
+* Installs and configures compiler dependencies, bpftool and prometheus
+* Creates a systemd service for nethadone to run on boot
+* Downloads and installs a BTF-enabled kernel
+* Downloads the nethadone binary from Github
+
+
+## Nethadone post-installation
+
+The easiest way to test out Nethadone is with a board like the
+Zero or R1 that has functional wifi with Armbian. You can spin
+up a [hotspot](https://ubuntu.com/core/docs/networkmanager/configure-wifi-access-points) with `nmcli`, eg:
 
 ```bash
-git clone https://github.com/atomic77/nethadone
+sudo nmcli dev wifi hotspot ifname wlan0 ssid nethadone password $password channel 8 band bg
 ```
 
-The default configuration file should work on an r1plus, and you
-can run this to build and launch:
+The network-manager hotspot conveniently sets up a LAN for you
+for any devices that connect wirelessly (default seems to be `10.42.0.0/24`), and NAT out to your wired interface, which should be plugged in
+directly to your primary router.
+
+> [!NOTE]
+> The network-manager hotspot also has the advantage of setting up DNS
+> caching automatically with `dnsmasq`. This makes it easier for 
+> nethadone to capture these packets, as clients receiving a local
+> IP as a DNS server in DHCP configuration typically do not use DNS-over-HTTPS.
+
+You can drop the `nmcli` command you used into `/etc/rc.local` to have
+it start up on reboot.
+
+### Adjusting cofiguration
+
+If you want to customize any parameters, or have different interface
+names, you can create a `/etc/nethadone.yml` file. 
+See the sample [config](../config/nethadone.yml) for more details.
+
+## Wired-only Deployment
+
+Faster devices like the OrangePi R1+, as of my last tests, do not have
+functional wifi with stock Armbian. This means they need to be introduced
+between your wifi router and your device providing internet access using
+the two ethernet ports.
+
+This provides fast, full coverage for all devices in your home, but could take down your internet in the event of an issue with nethadone.
+As this is still very much in development, it's recommended to stick
+with a secondary access point for now.
+
+If you have access to an extra wifi router, this is an example of how
+you can still make use of a wired-only device:
+
+![Secondary network](nethadone-secondary-network.drawio.png)
+
+In such as case, you will need to set up NAT for the interface
+connected to the , eg. if `eth0` is your wan interface:
 
 ```bash
-make run-root
+iptables -t nat -A POSTROUTING -o end0 -j MASQUERADE
 ```
 
+*TODO - properly document other steps required for this scenario*
+
+## Runtime logs
 
 If all goes well and nethadone is routing and inspecting traffic, 
-you should see log entries like:
+you should see be able to see log entries like:
 
 ```bash
+$ journalctl -u nethadone.service --follow
 ...
 2024/07/20 15:48:58 Registering prometheus metrics
 2024/07/20 15:48:58 Setting up SimpleLoadAverage policy
@@ -161,7 +169,7 @@ There is a basic admin interface where you can configure glob
 groups, see the currently active policy and inspect currently
 mapped DNS to IP addresses, it will be running at:
 
-http://r1plus.local:3000/
+http://orangepi-r1.local:3000/
 
 mDNS is configured by default - if this address does not resolve
 on your network, replace `r1plus.local` with whatever IP address
@@ -183,37 +191,15 @@ are being collected there using similar queries used by nethadone:
 
 ![prometheus](prometheus.png)
 
-### Routing Configuration & Client setup
+## Other boards 
 
-One of the design goals of Nethadone is to introduce minimal or
-no client configuration beyond DHCP. The growing use of DNS over
-HTTPS (DoH), unfortunately complicates this, as it prevents 
-Nethadone from using the typical UDP DNS packets to associate
-a client-requested domain with an IP address.
+Armbian does not ship with BTF-enabled kernels out of the box at this
+time; the two kernel builds available for Armbian `BOARDFAMILY` 
+[`rockchip64`](https://github.com/armbian/build/blob/752ba047b3cb600095f981cbabb8be53d12bb9a2/config/boards/orangepi-r1plus.csc#L3) 
+and [`sunxi`](https://github.com/armbian/build/blob/752ba047b3cb600095f981cbabb8be53d12bb9a2/config/boards/orangepi-r1.csc#L3), are targeted for the Orange Pi R1 Plus
+and R1 and Zero respectively. Others with the same family are likely,
+but not certain to work.
 
-In practice, the best way to work around this is to install 
-[pi-hole](https://github.com/pi-hole/pi-hole)
-on the same device. Most client devices on your network, if provided
-a local DNS server in the DHCP configuration, will automatically
-switch to UDP-based DNS, and Nethadone will be able to inspect these
-packets. Installing pi-hole on a non-raspberry pi is
-straight-forward though not officially supported, I have created a
-[youtube video with instructions](https://www.youtube.com/watch?v=m-mIglWyFcs) for installation on an orangepi zero that should work fine against a R1plus.
-
-Alternatively, you can configure browsers to 
-[disable the use of DoH](https://www.expressvpn.com/support/troubleshooting/disable-dns-over-https/).
-
-
-## Deployment
-
-The recommended way of starting out with Nethadone is to create
-a separate, 'protected' network, potentially using a old
-spare wifi router. This is how it looks in my environment:
-
-![Secondary network](nethadone-secondary-network.drawio.png)
-
-Ideally, the wifi found on a board like the Orange Pi R1+ could
-be used directly to create an isolated netwrk, but as of this time, Armbian does not have good support for the hardware. 
-
-If you are confident that your setup is good, you can then introduce Nethadone in between your primary access point and
-your cable/DSL/fiber provider.
+If you are interested in trying out another board and are having 
+trouble getting a BTF kernel working, please raise an issue and I'll
+try adding it to the Github Action.

@@ -19,16 +19,20 @@ import (
 
 func main() {
 
-	wanIf := flag.String("wan-interface", "eth0", "Interface connecting out to internet")
-	lanIf := flag.String("lan-interface", "eth1", "Interface connected to local network")
+	wanIf := flag.String("wan-interface", "", "Interface connecting out to internet")
+	lanIf := flag.String("lan-interface", "", "Interface connected to local network")
 	configFile := flag.String("config-file", "nethadone.yml", "Configuration file")
 
 	flag.Parse()
 
 	config.ParseConfig(*configFile)
 	// Command line parameters override anything that might be in the config
-	config.Cfg.LanInterface = *lanIf
-	config.Cfg.WanInterface = *wanIf
+	if *lanIf != "" {
+		config.Cfg.LanInterface = *lanIf
+	}
+	if *wanIf != "" {
+		config.Cfg.WanInterface = *wanIf
+	}
 
 	log.Println("Configuration: ", repr.String(config.Cfg, repr.Indent("  ")))
 	database.Connect()

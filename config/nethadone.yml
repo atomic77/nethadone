@@ -1,7 +1,7 @@
 # The WAN interface should have access to the internet
 wan_interface: "eth0"
 # The LAN interface is where your local devices are
-lan_nterface: "eth1"
+lan_interface: "eth1"
 
 cfg_db: "/root/cfg.db"
 dns_db: "/root/dns.db"

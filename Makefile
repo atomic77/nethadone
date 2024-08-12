@@ -30,7 +30,7 @@ run-root:
 all:
 	GOARCH=arm GOOS=linux go build -o build/nethadone-arm-linux ./cmd/nethadone.go 
 	GOARCH=arm64 GOOS=linux go build -o build/nethadone-arm64-linux ./cmd/nethadone.go 
-	GOARCH=amd64 GOOS=linux go build -o build/nethadone-arm-linux ./cmd/nethadone.go 
+	GOARCH=amd64 GOOS=linux go build -o build/nethadone-amd64-linux ./cmd/nethadone.go 
 
 build:
 	go build ./cmd/nethadone.go

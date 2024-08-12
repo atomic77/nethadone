@@ -34,10 +34,10 @@ jobs:
             - boardfamily: sunxi
               branch: legacy
               representative: orangepi-r1
-            # TODO Enable for R1plus and others as needed
-            # - boardfamily: rockchip64
-            #   branch: current
-            #   representative: rockpro64
+            # TODO Enable for others as needed
+            - boardfamily: rockchip64
+              branch: legacy
+              representative: orangepi-r1plus
         fail-fast: false
     env:
       BOARD_FAMILY: ${{ matrix.boardfamily }}

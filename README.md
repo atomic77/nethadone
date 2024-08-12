@@ -14,11 +14,11 @@ etc.) while avoiding the downsides of excessive use.
 
 Nethadone is in active development and has been tested on the following devices:
 
-* [Orange Pi R1 Plus](http://www.orangepi.org/orangepiwiki/index.php/Orange_Pi_R1_Plus)
-* [Orange Pi R1](http://www.orangepi.org/orangepiwiki/index.php/Orange_Pi_R1)
+* [Orange Pi R1 Plus](http://www.orangepi.org/html/hardWare/computerAndMicrocontrollers/details/orange-pi-R1-Plus.html)
+* [Orange Pi R1](http://www.orangepi.org/html/hardWare/computerAndMicrocontrollers/details/Orange-Pi-R1.html)
+* [Orange Pi Zero](http://www.orangepi.org/html/hardWare/computerAndMicrocontrollers/details/Orange-Pi-Zero-LTS.html)
 
-Any similar device using an armv7 or arm64 chipset should work.
-Please check out [doc/install.md](doc/install.md) for details.
+Please check out [doc/install.md](doc/install.md) for more details.
 
 For development or testing on a local VM, please see 
 [doc/development.md](doc/development.md)
