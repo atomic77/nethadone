@@ -7,12 +7,10 @@ import (
 // Retrieve the most likely domain for a given IP based on our
 // DNS cache. This should be enhanced to include the source IP as well
 func GetDomainForIP(ip string) string {
-	// TODO daddr is being stored as a blob for some reason by the
-	// dns probe; temporarily fix with a cast
 	var domain string
 	sql := `
 		SELECT domain FROM dns 
-		WHERE CAST(daddr AS VARCHAR) = $1
+		WHERE daddr = $1
 		ORDER BY tstamp DESC LIMIT 1
 	`
 	err := dnsDb.Get(&domain, sql, ip)

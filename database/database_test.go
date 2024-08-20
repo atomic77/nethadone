@@ -1,7 +1,6 @@
 package database
 
 import (
-	"os"
 	"path/filepath"
 	"testing"
 
@@ -31,9 +30,11 @@ func TestSqlXStruct(t *testing.T) {
 }
 
 func TestDomainRetrieve(t *testing.T) {
+	config.Cfg.DnsDb = "/tmp/dns.db"
+	config.Cfg.CfgDb = "/tmp/cfg.db"
 	Connect()
 
-	dom := GetDomainForIP("142.251.33.174")
+	dom := GetDomainForIP("104.17.24.14")
 
 	repr.Println(dom)
 }
@@ -42,7 +43,7 @@ func TestGlobRetrieve(t *testing.T) {
 	Connect()
 
 	g := models.GlobGroup{
-		Glob: "*.youtube.com",
+		Glob: "*.youtube.com.",
 	}
 	dom := GetIPsMatchingGlob(&g)
 
@@ -61,14 +62,28 @@ func TestDomainMatch(t *testing.T) {
 }
 
 func BenchmarkDomainMatch(b *testing.B) {
-	// FIXME Searching for domains by IP needs to be optimized
-	home, _ := os.UserHomeDir()
-	config.Cfg.DnsDb = home + "/dns.db"
-	config.Cfg.CfgDb = home + "/cfg.db"
+	// TODO properly generate a test db rather than depending on a copy
+	config.Cfg.DnsDb = "/tmp/dns.db"
+	config.Cfg.CfgDb = "/tmp/cfg.db"
 	Connect()
 	for i := 0; i < b.N; i++ {
-		dom := GetDomainForIP("50.112.128.108")
+		dom := GetDomainForIP("104.17.24.14")
 		if dom == "" {
+			b.Fail()
+		}
+	}
+}
+
+func BenchmarkGlobMatch(b *testing.B) {
+	config.Cfg.DnsDb = "/tmp/dns.db"
+	config.Cfg.CfgDb = "/tmp/cfg.db"
+	Connect()
+	for i := 0; i < b.N; i++ {
+		g := models.GlobGroup{
+			Glob: "*.youtube.com.",
+		}
+		ips := GetIPsMatchingGlob(&g)
+		if ips == nil {
 			b.Fail()
 		}
 	}
