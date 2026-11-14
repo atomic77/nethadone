@@ -8,7 +8,6 @@ import (
 	"github.com/atomic77/nethadone/config"
 	"github.com/atomic77/nethadone/models"
 	"github.com/jmoiron/sqlx"
-	"github.com/prometheus/client_golang/api"
 	_ "modernc.org/sqlite"
 )
 
@@ -63,12 +62,6 @@ func Connect() {
 	log.Println("Connected to cfg database")
 	for _, t := range cfgSchema {
 		cfgDb.MustExec(t)
-	}
-
-	// Local prometheus instance
-	promDb, err = api.NewClient(api.Config{Address: config.Cfg.PrometheusUrl})
-	if err != nil {
-		log.Fatalln("Could not connect to local prometheus instance")
 	}
 }
 

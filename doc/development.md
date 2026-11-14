@@ -12,13 +12,13 @@ needs `gcc-multilib`, because those sources include libc headers.
 
 ### 1. Unit tests: `make test`
 
-No root, no kernel features. Covers the policy loop (with Prometheus and the
-kernel replaced by stubs), sqlite queries on temp databases, the Prometheus
-client against a fake API, DNS answer parsing, the throttler template, and the
+No root, no kernel features. Covers the policy loop (with the usage rates and the
+kernel replaced by stubs), sqlite queries on temp databases, the in-memory
+usage rates (windows, offsets, counter resets), DNS answer parsing, the throttler template, and the
 policy class ↔ qdisc leaf handle invariant.
 
 The seams used by the tests are package variables: `database.GetSrcGlobUsage`
-(Prometheus) and `policy.applyToKernel` (BPF compile + attach).
+(usage rates) and `policy.applyToKernel` (BPF compile + attach).
 
 ### 2. BPF programs on synthetic packets: `make test-bpf`
 
@@ -45,8 +45,7 @@ On a 512 MB board, clang will likely be OOM-killed well before 1000 rules.
 ### 3. Full router in network namespaces: `scripts/netns-lab.sh`
 
 Builds a client / router / "internet" topology from veth pairs in three
-network namespaces, with dnsmasq and iperf3 on the internet side and Prometheus
-(Docker) on the host. Nethadone runs inside the router namespace, where it can
+network namespaces, with dnsmasq and iperf3 on the internet side. Nethadone runs inside the router namespace, where it can
 only see `lan0`, `wan0` and `mgmt0`, so the host's interfaces are never touched.
 
 ```bash
@@ -57,9 +56,10 @@ sudo scripts/netns-lab.sh status    # policies, per-class qdisc counters, metric
 sudo scripts/netns-lab.sh down
 ```
 
-The lab config uses short intervals. The first policy appears after about 5
-minutes of traffic (the policy queries look back 5 minutes), then the client
-steps down one bandwidth class per backoff interval (1 minute).
+The lab config sets `policy_time_unit: 10s`, so the policy's rate windows are
+seconds instead of minutes. The first policy appears about 70 seconds into the
+traffic, then the client steps down one bandwidth class roughly every 15–20
+seconds; class 60 is reached in about 3 minutes (`traffic` runs 240 s by default).
 
 Unthrottled traffic shows up in the HTB `direct_packets_stat`, not class `1:10`:
 the throttler filter's default classid is `1:0`, which HTB treats as direct.

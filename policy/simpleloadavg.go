@@ -9,13 +9,7 @@ import (
 	"github.com/atomic77/nethadone/handlers"
 	"github.com/atomic77/nethadone/models"
 	mapset "github.com/deckarep/golang-set/v2"
-	"github.com/prometheus/common/model"
 )
-
-type srcGlob struct {
-	src  model.LabelValue
-	glob model.LabelValue
-}
 
 func InitPolicy() {
 
@@ -23,28 +17,18 @@ func InitPolicy() {
 	go pollPolicyCheck()
 }
 
-func createSrcGlobSet(vec model.Vector) mapset.Set[srcGlob] {
-	s := mapset.NewSet[srcGlob]()
-
-	for _, v := range vec {
-		sg := srcGlob{
-			src:  v.Metric["src_ip"],
-			glob: v.Metric["glob"],
-		}
-		s.Add(sg)
-	}
-
-	return s
+func createSrcGlobSet(sgs []database.SrcGlob) mapset.Set[database.SrcGlob] {
+	return mapset.NewSet(sgs...)
 }
 
-func getActiveGlobGroups() mapset.Set[srcGlob] {
+func getActiveGlobGroups() mapset.Set[database.SrcGlob] {
 	// Anything we get in s is a client that has exceeded the
 	// policy for a given glob group
 
-	k := config.Cfg.ActivityThresholdBytes
-	s1 := createSrcGlobSet(database.GetSrcGlobUsage(2, 0, k, true))
-	s2 := createSrcGlobSet(database.GetSrcGlobUsage(2, 5, k, true))
-	s3 := createSrcGlobSet(database.GetSrcGlobUsage(5, 0, k, true))
+	k, u := config.Cfg.ActivityThresholdBytes, config.Cfg.PolicyTimeUnit
+	s1 := createSrcGlobSet(database.GetSrcGlobUsage(2*u, 0, k, true))
+	s2 := createSrcGlobSet(database.GetSrcGlobUsage(2*u, 5*u, k, true))
+	s3 := createSrcGlobSet(database.GetSrcGlobUsage(5*u, 0, k, true))
 
 	s12 := s1.Intersect(s2)
 	s := s3.Intersect(s12)
@@ -59,8 +43,7 @@ func increaseThrottling() bool {
 
 	log.Println("Found ", s.Cardinality(), " globs for throttling")
 	for _, match := range s.ToSlice() {
-		src_ip := string(match.src)
-		glob := string(match.glob)
+		src_ip, glob := match.Src, match.Glob
 		p := database.GetPolicy(src_ip, glob)
 
 		if p == nil {
@@ -94,14 +77,13 @@ func increaseThrottling() bool {
 func decreasingThrottling() bool {
 
 	changed := false
-	k := config.Cfg.ActivityThresholdBytes
+	k, u := config.Cfg.ActivityThresholdBytes, config.Cfg.PolicyTimeUnit
 
-	s := createSrcGlobSet(database.GetSrcGlobUsage(5, 0, k, false))
+	s := createSrcGlobSet(database.GetSrcGlobUsage(5*u, 0, k, false))
 
 	log.Println(s.Cardinality(), " globs that can be decreased")
 	for _, match := range s.ToSlice() {
-		src_ip := string(match.src)
-		glob := string(match.glob)
+		src_ip, glob := match.Src, match.Glob
 		p := database.GetPolicy(src_ip, glob)
 
 		if p == nil {

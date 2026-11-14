@@ -9,7 +9,6 @@ import (
 	"github.com/atomic77/nethadone/config"
 	"github.com/atomic77/nethadone/database"
 	"github.com/atomic77/nethadone/models"
-	"github.com/prometheus/common/model"
 )
 
 const (
@@ -18,7 +17,7 @@ const (
 	ytIP    = "142.250.1.1"
 )
 
-// setup gives each test fresh sqlite DBs with a "yt" glob group, a Prometheus
+// setup gives each test fresh sqlite DBs with a "yt" glob group, a usage
 // stub reporting `active` above and `idle` below the threshold, and a capture of
 // what would have been compiled into the throttler.
 func setup(t *testing.T, active, idle []string) *[][]models.IpPolicy {
@@ -38,15 +37,15 @@ func setup(t *testing.T, active, idle []string) *[][]models.IpPolicy {
 		t.Fatal(err)
 	}
 
-	vec := func(srcs []string) model.Vector {
-		v := model.Vector{}
+	vec := func(srcs []string) []database.SrcGlob {
+		v := []database.SrcGlob{}
 		for _, s := range srcs {
-			v = append(v, &model.Sample{Metric: model.Metric{"src_ip": model.LabelValue(s), "glob": "yt"}})
+			v = append(v, database.SrcGlob{Src: s, Glob: "yt"})
 		}
 		return v
 	}
 	origQuery, origApply := database.GetSrcGlobUsage, applyToKernel
-	database.GetSrcGlobUsage = func(rate, mins, k int, above bool) model.Vector {
+	database.GetSrcGlobUsage = func(window, ago time.Duration, k int, above bool) []database.SrcGlob {
 		if above {
 			return vec(active)
 		}

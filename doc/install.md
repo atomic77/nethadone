@@ -37,7 +37,7 @@ of required packages directly on the SBC, you can copy paste from
 
 At a high level, the `customize-image.sh` script:
 
-* Installs and configures compiler dependencies, bpftool and prometheus
+* Installs and configures compiler dependencies and bpftool
 * Creates a systemd service for nethadone to run on boot
 * Downloads and installs a BTF-enabled kernel
 * Downloads the nethadone binary from Github
@@ -184,12 +184,9 @@ mapped to likely domains on the bandwidth page:
 
 ![bandwidth](bandwidth.png)
 
-The local prometheus server that is used for policy decisions
-should be available on port 9090, and you can check that metrics
-are being collected there using similar queries used by nethadone:
-
-
-![prometheus](prometheus.png)
+Policy decisions no longer need a Prometheus server. The raw counters
+are still exported on `http://<router>:3000/metrics` if you want to
+scrape and graph them yourself.
 
 ## Other boards 
 

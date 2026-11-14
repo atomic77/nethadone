@@ -7,6 +7,7 @@ import (
 
 	"github.com/VictoriaMetrics/metrics"
 	"github.com/atomic77/nethadone/config"
+	"github.com/atomic77/nethadone/database"
 )
 
 func InitMetrics() {
@@ -22,7 +23,11 @@ func pollMetrics() {
 		// performance of this method becomes quite slow
 		bl := getBandwidthList(false)
 		log.Println("Collected bandwidth stats from ", len(bl), " ip pairs")
+		pairs := make([]database.PairBytes, 0, len(bl))
 		for _, b := range bl {
+			pairs = append(pairs, database.PairBytes{
+				Src: b.SrcIpAddr.String(), Dst: b.DestIpAddr.String(), Glob: b.GlobName, Bytes: b.Bytes,
+			})
 			s := fmt.Sprintf(
 				`ip_pair_vic_bytes_total{%s="%s", %s="%s", %s="%s", %s="%s"}`,
 				"src_ip", b.SrcIpAddr.String(),
@@ -32,6 +37,7 @@ func pollMetrics() {
 			)
 			metrics.GetOrCreateFloatCounter(s).Set(float64(b.Bytes))
 		}
+		database.RecordUsage(time.Now(), pairs)
 
 	}
 }

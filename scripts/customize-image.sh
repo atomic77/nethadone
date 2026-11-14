@@ -25,13 +25,7 @@ apt-get update -y
 
 apt-get install -y apt-transport-https ca-certificates curl clang llvm jq \
         libelf-dev libpcap-dev libbfd-dev binutils-dev build-essential make \
-        vim libbpf-dev avahi-daemon linux-tools-common dnsmasq prometheus
-
-cat >> /etc/prometheus/prometheus.yml << EOF
-  - job_name: "nethadone"
-    static_configs:
-      - targets: ["localhost:3000"]
-EOF
+        vim libbpf-dev avahi-daemon linux-tools-common dnsmasq
 
 
 cat <<EOF > /etc/systemd/system/nethadone.service

@@ -5,7 +5,6 @@ lan_interface: "eth1"
 
 cfg_db: "/root/cfg.db"
 dns_db: "/root/dns.db"
-prometheus_url: "http://localhost:9090"
 
 ###
 # Operational parameters
@@ -35,8 +34,8 @@ min_rate_kbs: 50
 # See policy/README.md for details
 
 # Activity threshold is represented as `k` in policy readme,
-# the number of bytes considered "active" for the prom rate
-# queries.
+# the bytes per second over which a client counts as "active"
+# on a glob group.
 # For sites that do not consume a lot of bandwidth (eg. browsing mostly
 # comments on Reddit or Twitter), and involve some idle periods, 
 # this can be set to a very low number like 0. For more bandwidth heavy
@@ -45,4 +44,7 @@ activity_threshold_bytes: 1
 # How long before we'll consider a change to policy;
 # setting this lower will cause clients to be moved up and
 # down bandwidth classes faster
-policy_backoff_interval: 2m
+policy_backoff_interval: 2m# Unit of the policy's rate windows: activity is checked over 2 units now,
+# 2 units ending 5 units ago and 5 units now (see policy/README.md).
+# Leave at 1m; shorter values are only for testing (e.g. the netns lab).
+policy_time_unit: 1m

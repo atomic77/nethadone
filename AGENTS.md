@@ -10,8 +10,8 @@ Data flow:
 
 1. `ebpf/dnspkt.bpf.c` (tc filter on the WAN, ingress and egress) sniffs DNS answers and sends them to userspace through a perf array. `handlers/bpf.go:pollDnsResponses` stores the A records in the sqlite `dns` table.
 2. `ebpf/trafficmon.bpf.c` (tc filter on LAN egress) counts bytes per (src,dst) IP pair in the hash map `src_dest_bytes`.
-3. Every `map_collection_interval`, `handlers/prom.go:pollMetrics` walks that map, looks up the domain and glob group for each pair, and exports `ip_pair_vic_bytes_total{src_ip,dest_ip,prob_domain,glob}` on `/metrics`.
-4. An **external Prometheus** scrapes `/metrics`. Every `policy_check_interval`, `policy/simpleloadavg.go` queries Prometheus (`database/prom.go`) and moves each (src_ip, glob) policy up or down one bandwidth class. Policies live in the sqlite `policy` table.
+3. Every `map_collection_interval`, `handlers/prom.go:pollMetrics` walks that map, looks up the domain and glob group for each pair, exports `ip_pair_vic_bytes_total{src_ip,dest_ip,prob_domain,glob}` on `/metrics` (optional, for graphs), and feeds `database.RecordUsage`. That keeps ~10 minutes of per (src_ip, glob) byte totals **in memory** (`database/usage.go`); history is lost on restart.
+4. Every `policy_check_interval`, `policy/simpleloadavg.go` asks `database.GetSrcGlobUsage` for windowed rates and moves each (src_ip, glob) policy up or down one bandwidth class. Policies live in the sqlite `policy` table.
 5. When any policy changes, `handlers.ApplyPolicies` renders `handlers/throttle.bpf.c.tpl` with one `if` per IP pair, **compiles it with `clang` at runtime**, and swaps it in as the tc filter on the LAN HTB root (`1:`). The filter sets `skb->tc_classid`.
 
 ## Layout
@@ -20,7 +20,7 @@ Data flow:
 |---|---|
 | `cmd/nethadone.go` | Entry point: flags, config, routes. |
 | `config/` | `Config` struct, defaults in `baseConfig`, global `config.Cfg`. `config/nethadone.yml` is the documented example. |
-| `database/` | sqlite through sqlx + `modernc.org/sqlite` (pure Go, no cgo). Two DBs: `cfg_db` (glob_group, device, policy) and `dns_db` (dns). Also the Prometheus query client. Schema is created in `Connect()`. |
+| `database/` | sqlite through sqlx + `modernc.org/sqlite` (pure Go, no cgo). Two DBs: `cfg_db` (glob_group, device, policy) and `dns_db` (dns). Schema is created in `Connect()`. Also the in-memory usage store (`usage.go`). |
 | `handlers/` | Mixes HTTP handlers (`handlers.go`), eBPF loading and attaching (`bpf.go`), qdisc setup (`qdisc.go`) and metrics (`prom.go`). |
 | `handlers/*_bpfe[lb].{go,o}` | **Generated** by bpf2go and committed. Do not hand-edit. |
 | `handlers/throttle.bpf.c.tpl` | Throttler template, embedded via `handlers/embed.go`. This is the real source; `ebpf/throttle.bpf.c` is a gitignored render. |
@@ -43,7 +43,7 @@ go generate ./handlers         # regenerate bpf2go output after editing dnspkt/t
 
 Flags: `-wan-interface`, `-lan-interface` and `-config-file` (default `nethadone.yml` in CWD). The flags override the YAML. A missing config file silently falls back to the defaults.
 
-Runtime requirements on the target: root, a kernel with BTF, `clang` and the libbpf/kernel headers (the throttler is compiled on the device; include paths are hardcoded for aarch64 and armv7 in `handlers/bpf.go:rebuildBpf`), and a Prometheus that scrapes `:3000/metrics`. The Docker image is only a convenient way to build a dev VM (see `doc/development.md`, which uses d2vm). Containers cannot run nethadone itself.
+Runtime requirements on the target: root, a kernel with BTF, `clang` and the libbpf/kernel headers (the throttler is compiled on the device; include paths are hardcoded for aarch64 and armv7 in `handlers/bpf.go:rebuildBpf`). No Prometheus is needed; `/metrics` is only for people who want graphs. The Docker image is only a convenient way to build a dev VM (see `doc/development.md`, which uses d2vm). Containers cannot run nethadone itself.
 
 The CI workflow `.github/workflows/build-nethadone-binary.yml` (manual dispatch) runs `make all` and publishes a dated release.
 
@@ -56,11 +56,11 @@ See `doc/development.md` for the four levels. In short:
 - `make test-vm KERNEL=v6.6.40`: the same, inside a virtme-ng VM on a chosen upstream kernel.
 - `scripts/netns-lab.sh`: the full binary inside a namespaced router topology. This is the only safe way to run the binary on a workstation.
 
-Test seams are package variables: `database.GetSrcGlobUsage` (Prometheus) and `policy.applyToKernel` (compile + attach). Tests point `config.Cfg.DnsDb/CfgDb` at `t.TempDir()`. `handlers/qdisc_test.go` lists qdiscs (read-only) and is skipped unless running as root.
+Test seams are package variables: `database.GetSrcGlobUsage` (usage rates) and `policy.applyToKernel` (compile + attach). Tests point `config.Cfg.DnsDb/CfgDb` at `t.TempDir()`. `handlers/qdisc_test.go` lists qdiscs (read-only) and is skipped unless running as root.
 
 ## Conventions and invariants
 
-- **Global state everywhere**: `config.Cfg`, `database.dnsDb/cfgDb/promDb` and `handlers.BpfCtx`. Init order in `main` matters: `ParseConfig` → `database.Connect` → `handlers.Initialize` (qdiscs + BPF) → `InitMetrics` → `InitPolicy`.
+- **Global state everywhere**: `config.Cfg`, `database.dnsDb/cfgDb/usage` and `handlers.BpfCtx`. Init order in `main` matters: `ParseConfig` → `database.Connect` → `handlers.Initialize` (qdiscs + BPF) → `InitMetrics` → `InitPolicy`.
 - **Errors**: setup and kernel failures call `log.Fatal`. Request-time and loop failures log and continue. There is no logging framework, only `log.Println`.
 - **Class IDs**: a policy `class` is a multiple of 10 (10, 20, …). The template emits it as `0x{{ .ClassId }}`, so class 10 becomes tc minor `0x10`. `qdisc.go:createLeafQdiscs` creates leaf classes `1:(idx+1)*16`, which are 0x10, 0x20, and so on. If you change either side, keep them in sync.
 - **IP format for BPF**: `IpPolicy.SrcIpAddr` and `DestIpAddr` use commas (`192,168,0,1`) because they feed the `IP_ADDRESS(o1,o2,o3,o4)` macro. The conversion happens in `database.GetIpPolicies`.
@@ -78,7 +78,6 @@ Test seams are package variables: `database.GetSrcGlobUsage` (Prometheus) and `p
 - `handlers.Initialize` applies a hardcoded placeholder policy (`192,168,0,174`, class 10) at startup.
 - `/favicon.ico` serves `static/laptop.svg` from a relative path, which is not embedded, so it 404s unless CWD is the repo or `/app`.
 - `handlers/bpf.go`: `attachTrafficMonitor` and `reattachThrottler` log "DNS sniffer" in their error messages (copy-paste).
-- The uncommitted `go.mod` diff changes a comment from `// indirect` to `// inditect`. It looks like a typo.
 - Large commented-out blocks remain (old `CompileBpf`, tcnl close). Prefer deleting dead code over adding more.
 
 ## Working in this repo

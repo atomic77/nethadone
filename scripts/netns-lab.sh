@@ -4,10 +4,10 @@
 #
 #   [nth-client] eth0 --- lan0 [nth-router] wan0 --- eth0 [nth-inet]
 #    10.10.0.2           10.10.0.1    10.20.0.1        10.20.0.2 (dnsmasq, iperf3)
-#                                 mgmt0 10.30.0.2 --- nth-host 10.30.0.1 (host: Prometheus)
+#                                 mgmt0 10.30.0.2 --- nth-host 10.30.0.1 (host, for the UI)
 #
-# Usage (needs root, clang, libbpf-dev, dnsmasq, iperf3, dig, docker):
-#   sudo scripts/netns-lab.sh up          # namespaces, dnsmasq, iperf3, Prometheus
+# Usage (needs root, clang, libbpf-dev, dnsmasq, iperf3, dig):
+#   sudo scripts/netns-lab.sh up          # namespaces, dnsmasq, iperf3
 #   sudo scripts/netns-lab.sh run         # build + run nethadone inside nth-router (foreground)
 #   sudo scripts/netns-lab.sh traffic     # in another shell: DNS lookups + iperf3 downloads
 #   sudo scripts/netns-lab.sh status      # policies, qdisc class counters
@@ -16,7 +16,6 @@ set -euo pipefail
 
 LAB=${NTH_LAB_DIR:-/tmp/nethadone-lab}
 REPO=$(cd "$(dirname "$0")/.." && pwd)
-PROM_IMAGE=prom/prometheus:v2.53.0
 C=nth-client R=nth-router I=nth-inet
 nsx() { local ns=$1; shift; ip netns exec "$ns" "$@"; }
 
@@ -47,29 +46,19 @@ up() {
 		--pid-file="$LAB/dnsmasq.pid"
 	nsx $I iperf3 -s -D -B 10.20.0.2 --pidfile "$LAB/iperf3.pid"
 
-	cat >"$LAB/prometheus.yml" <<-EOF
-		global: { scrape_interval: 10s }
-		scrape_configs:
-		  - job_name: nethadone
-		    static_configs: [ { targets: ['10.30.0.2:3000'] } ]
-	EOF
-	docker run -d --rm --name nth-prometheus --network host \
-		-v "$LAB/prometheus.yml:/etc/prometheus/prometheus.yml:ro" $PROM_IMAGE \
-		--config.file=/etc/prometheus/prometheus.yml --web.listen-address=10.30.0.1:9090 >/dev/null
-
-	# Short intervals so policy changes show up within a few minutes
+	# Policy windows in 10s units instead of 1m: first policy after ~70s, then one step per ~15s
 	cat >"$LAB/nethadone.yml" <<-EOF
 		lan_interface: lan0
 		wan_interface: wan0
 		cfg_db: $LAB/cfg.db
 		dns_db: $LAB/dns.db
-		prometheus_url: http://10.30.0.1:9090
-		map_collection_interval: 5s
-		policy_check_interval: 30s
-		policy_backoff_interval: 1m
+		map_collection_interval: 2s
+		policy_check_interval: 10s
+		policy_backoff_interval: 15s
+		policy_time_unit: 10s
 		activity_threshold_bytes: 1000
 	EOF
-	echo "lab up. Prometheus: http://10.30.0.1:9090  nethadone UI (after run): http://10.30.0.2:3000"
+	echo "lab up. nethadone UI (after run): http://10.30.0.2:3000"
 }
 
 run() {
@@ -85,11 +74,11 @@ run() {
 }
 
 traffic() {
-	local end=$((SECONDS + ${1:-600}))
+	local end=$((SECONDS + ${1:-240}))
 	while ((SECONDS < end)); do
 		nsx $C dig +short @10.20.0.2 www.youtube.test >/dev/null
 		# -R: server sends, so the bytes cross the router's LAN egress like real downloads
-		nsx $C iperf3 -c 10.20.0.2 -R -t 20 -f k | grep -E 'receiver' || true
+		nsx $C iperf3 -c 10.20.0.2 -R -t 10 -f k | grep -E 'receiver' || true
 	done
 }
 
@@ -100,7 +89,6 @@ status() {
 }
 
 down() {
-	docker rm -f nth-prometheus >/dev/null 2>&1 || true
 	for f in dnsmasq iperf3; do [ -f "$LAB/$f.pid" ] && kill "$(cat "$LAB/$f.pid")" 2>/dev/null || true; done
 	pkill -f "$REPO/build/nethadone-lab" 2>/dev/null || true
 	ip link del nth-host 2>/dev/null || true
@@ -110,5 +98,5 @@ down() {
 
 case ${1:-} in
 up | run | traffic | status | down) "$@" ;;
-*) sed -n '2,17p' "$0"; exit 1 ;;
+*) sed -n '2,14p' "$0"; exit 1 ;;
 esac
