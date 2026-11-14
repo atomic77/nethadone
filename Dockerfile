@@ -1,4 +1,4 @@
-FROM golang:1.22 AS build
+FROM golang:1.27 AS build
 
 WORKDIR /go/src/nethadone
 

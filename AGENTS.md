@@ -4,7 +4,7 @@ Guidance for AI coding agents working on Nethadone. Read `README.md` for the pro
 
 ## What this is
 
-A single Go binary (Go 1.22, module `github.com/atomic77/nethadone`) that runs **as root on a Linux router** (Orange Pi R1/R1 Plus/Zero, armv7 + arm64) and slows down traffic to "addictive" sites using eBPF and tc qdiscs. It also serves a small web UI on `:3000`.
+A single Go binary (Go 1.26+, module `github.com/atomic77/nethadone`) that runs **as root on a Linux router** (Orange Pi R1/R1 Plus/Zero, armv7 + arm64) and slows down traffic to "addictive" sites using eBPF and tc qdiscs. It also serves a small web UI on `:3000`.
 
 Data flow:
 

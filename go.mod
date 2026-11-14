@@ -1,6 +1,6 @@
 module github.com/atomic77/nethadone
 
-go 1.22
+go 1.26
 
 require (
 	github.com/VictoriaMetrics/metrics v1.33.1
