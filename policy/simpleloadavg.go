@@ -74,15 +74,18 @@ func increaseThrottling() bool {
 			continue
 		}
 
-		backOff := time.Now().Add(config.Cfg.PolicyBackoffInterval)
+		backOff := time.Now().Add(-config.Cfg.PolicyBackoffInterval)
 		if p.Tstamp.After(backOff) {
 			log.Println("too soon to update policy for ", src_ip, glob)
 		} else if p.Class > config.Cfg.NumQdiscClasses*10 {
 			log.Println("already hit maximum policy for ", src_ip, glob)
 		} else {
 			log.Println("increasing throttling policy for ", src_ip, glob)
-			database.UpdatePolicy(src_ip, glob, p.Class+10)
-			changed = true
+			if err := database.UpdatePolicy(src_ip, glob, p.Class+10); err != nil {
+				log.Println("could not update policy: ", err)
+			} else {
+				changed = true
+			}
 		}
 	}
 	return changed
@@ -107,9 +110,7 @@ func decreasingThrottling() bool {
 			continue
 		}
 
-		// After testing set this back to 5 or some more sensible default
-		// from configuration
-		backOff := time.Now().Add(config.Cfg.PolicyBackoffInterval)
+		backOff := time.Now().Add(-config.Cfg.PolicyBackoffInterval)
 		if p.Tstamp.After(backOff) {
 			log.Println("too soon to update policy for ", src_ip, glob)
 		} else if p.Class <= 10 {
@@ -129,27 +130,34 @@ func pollPolicyCheck() {
 	log.Println("Setting up policy checker on ", config.Cfg.PolicyCheckInterval, " interval ")
 	for range time.Tick(config.Cfg.PolicyCheckInterval) {
 		log.Println("Checking policy ")
-		changed := increaseThrottling()
-		changed = changed || decreasingThrottling()
-		if changed {
-			applyPolicies()
-		}
+		checkPolicies()
 	}
 }
+
+func checkPolicies() {
+	increased := increaseThrottling()
+	decreased := decreasingThrottling()
+	if increased || decreased {
+		applyPolicies()
+	}
+}
+
+// applyToKernel is a variable so tests can capture policies instead of compiling BPF.
+var applyToKernel = handlers.ApplyPolicies
 
 func applyPolicies() {
 	log.Println("Reapplying policy")
 	policies := database.GetAllPolicies()
+	if policies == nil {
+		return
+	}
 	allPolicies := make([]models.IpPolicy, 0)
 	for _, p := range *policies {
 		ipPolicies := database.GetIpPolicies(&p)
-		for _, ip := range *ipPolicies {
-			allPolicies = append(allPolicies, ip)
+		if ipPolicies != nil {
+			allPolicies = append(allPolicies, *ipPolicies...)
 		}
-		// This isn't compiling for some reason though the static checker is complaining about the loop above
-		// and providing this suggestion (?)
-		// allPolicies = append(allPolicies, *ipPolicies)
 	}
-	handlers.ApplyPolicies(&allPolicies)
+	applyToKernel(&allPolicies)
 
 }

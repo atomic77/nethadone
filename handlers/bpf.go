@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"io"
 	"log"
 	"net"
 	"os"
@@ -103,23 +104,22 @@ func ApplyPolicies(ipPolicies *[]models.IpPolicy) {
 	os.Remove(objFile.Name())
 }
 
+func renderThrottler(w io.Writer, tplfile string, ipPolicies *[]models.IpPolicy) error {
+	tpl := template.Must(template.ParseFS(EmbedThrottlerCode, tplfile))
+	return tpl.Execute(w, struct{ IpPolicies *[]models.IpPolicy }{ipPolicies})
+}
+
 func rebuildBpf(tplfile string, target *os.File, objFile *os.File, ipPolicies *[]models.IpPolicy) {
 	log.Println("Rebuilding with ", len(*ipPolicies), " throttle targets from policy database")
-	tpl := template.Must(template.ParseFS(EmbedThrottlerCode, tplfile))
-	type fdata struct {
-		IpPolicies *[]models.IpPolicy
-	}
-
 	log.Println("Temporary file ", target.Name())
-	err := tpl.Execute(target, fdata{IpPolicies: ipPolicies})
-	if err != nil {
+	if err := renderThrottler(target, tplfile, ipPolicies); err != nil {
 		log.Fatal("failed to render file ", err)
 	}
 	// FIXME There surely must be a better way of doing this dynamically
 	cmd := exec.Command(
 		"clang", "-g", "-O2",
-		// Include both armv7 and aarch64 include folders
-		"-I/usr/include/aarch64-linux-gnu", "-I/usr/arm-linux-gnueabi/include",
+		// Include both armv7 and aarch64 include folders, plus x86_64 for dev machines
+		"-I/usr/include/aarch64-linux-gnu", "-I/usr/arm-linux-gnueabi/include", "-I/usr/include/x86_64-linux-gnu",
 		"-Wall", "-target", "bpf", "-c", target.Name(), "-o", objFile.Name(),
 	)
 	cmd.Dir = os.TempDir()
@@ -332,21 +332,21 @@ func pollDnsResponses() {
 			log.Fatalln("failure on event read", err)
 		}
 
-		msg := new(dns.Msg)
-		if err := msg.Unpack(event.RawSample); err != nil {
-			log.Println("Error decoding DNS record:", err)
-		}
-		// TODO Investigate how to better control logging verbosity levels
-		// log.Println("Captured DNS packet ", msg.Question, msg.Answer)
+		handleDnsPacket(event.RawSample)
+	}
+}
 
-		for _, resp := range msg.Answer {
-			a, ok := resp.(*dns.A)
-			if ok {
-				err = database.AddDns(a.Header().Name, &a.A)
-				// log.Println("DNS A response:", a.Header().Name, a.A.String())
-				if err != nil {
-					log.Println("failed to write to dns db", err)
-				}
+// handleDnsPacket stores the A records of a DNS payload captured by dnspkt.bpf.c
+func handleDnsPacket(raw []byte) {
+	msg := new(dns.Msg)
+	if err := msg.Unpack(raw); err != nil {
+		log.Println("Error decoding DNS record:", err)
+	}
+	for _, resp := range msg.Answer {
+		a, ok := resp.(*dns.A)
+		if ok {
+			if err := database.AddDns(a.Header().Name, &a.A); err != nil {
+				log.Println("failed to write to dns db", err)
 			}
 		}
 	}

@@ -103,6 +103,14 @@ func getMatchingGlobGroup(dom string) *models.GlobGroup {
 	return nil
 }
 
+// decodeIpPairKey splits a trafficmon.bpf.c src_dest_bytes key into (LAN client, remote) IPs.
+// The program runs on LAN egress, so the key's low word (packet daddr) is the client.
+func decodeIpPairKey(key uint64) (net.IP, net.IP) {
+	b := make([]byte, 8)
+	binary.LittleEndian.PutUint64(b, key)
+	return net.IP(b[0:4]), net.IP(b[4:8])
+}
+
 func getBandwidthList(globsOnly bool) []BandwidthList {
 	// TODO This needs to be optimized
 
@@ -112,15 +120,7 @@ func getBandwidthList(globsOnly bool) []BandwidthList {
 		// entries := BpfCtx.TcFilterObjs.Map.Iterate()
 		entries := BpfCtx.TrafficmonObjs.trafficmonMaps.SrcDestBytes.Iterate()
 		for entries.Next(&key, &val) {
-			// net.IP
-			b := make([]byte, 8)
-			binary.LittleEndian.PutUint64(b, key)
-			src := binary.BigEndian.Uint32(b[0:4])
-			dest := binary.BigEndian.Uint32(b[4:8])
-			srcip := make(net.IP, 4)
-			binary.BigEndian.PutUint32(srcip, src)
-			destip := make(net.IP, 4)
-			binary.BigEndian.PutUint32(destip, dest)
+			srcip, destip := decodeIpPairKey(key)
 			dom := database.GetDomainForIP(destip.String())
 			gg := getMatchingGlobGroup(dom)
 			bl := BandwidthList{

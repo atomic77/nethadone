@@ -35,6 +35,29 @@ all:
 build:
 	go build ./cmd/nethadone.go
 
+### Tests: see doc/development.md
+KERNEL ?= v6.6.40
+
+test: ## Unit tests (no root, no kernel features)
+	go vet ./...
+	go test ./...
+
+test-bpf: ## Run the BPF programs on synthetic packets (sudo; attaches nothing)
+	go test -exec sudo ./handlers -run BPF -v
+
+test-vm: ## BPF tests in a virtme-ng VM booting upstream kernel $(KERNEL)
+	go test -c -o build/handlers.test ./handlers
+	vng -r $(KERNEL) --memory 2G --user root -- ./build/handlers.test -test.run BPF -test.v
+
+lab-up: ## Namespaced router lab (scripts/netns-lab.sh); then lab-run, lab-traffic, lab-down
+	sudo scripts/netns-lab.sh up
+lab-run:
+	sudo scripts/netns-lab.sh run
+lab-traffic:
+	sudo scripts/netns-lab.sh traffic
+lab-down:
+	sudo scripts/netns-lab.sh down
+
 build-docker: ## Generate docker image
 	docker build -t $(image_name) .
 

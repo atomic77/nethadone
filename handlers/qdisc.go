@@ -94,7 +94,7 @@ func createQdiscs() {
 func recreateBpfQdisc(iface *net.Interface) {
 	// Deleting the clsact qdisc on startup ensures that any child filters, ebpf progs are cleaned up
 	bpfQdisc := &netlink.Clsact{
-		netlink.QdiscAttrs{LinkIndex: iface.Index, Handle: netlink.MakeHandle(0xffff, 0), Parent: netlink.HANDLE_CLSACT},
+		QdiscAttrs: netlink.QdiscAttrs{LinkIndex: iface.Index, Handle: netlink.MakeHandle(0xffff, 0), Parent: netlink.HANDLE_CLSACT},
 	}
 
 	netlink.QdiscDel(
@@ -146,11 +146,17 @@ func generateQdiscLeafNodes(iface *net.Interface) []leafConfig {
 	return leaves
 }
 
+// leafHandle is the tc minor of leaf class idx; it must equal the 0x{{ .ClassId }}
+// the throttler emits for policy class (idx+1)*10.
+func leafHandle(idx int) uint16 {
+	return uint16(idx+1) * 16
+}
+
 func createLeafQdiscs(leaves *[]leafConfig) {
 
 	for idx, leaf := range *leaves {
 		log.Println(repr.String(leaf))
-		handleId := (uint16)(idx+1) * 16
+		handleId := leafHandle(idx)
 		cls := netlink.NewHtbClass(
 			netlink.ClassAttrs{LinkIndex: leaf.Iface, Handle: netlink.MakeHandle(1, handleId), Parent: netlink.MakeHandle(1, 1)},
 			netlink.HtbClassAttrs{Rate: leaf.Rate, Ceil: leaf.Rate},

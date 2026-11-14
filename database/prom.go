@@ -13,7 +13,10 @@ import (
 
 var promDb api.Client
 
-func GetSrcGlobUsage(rate int, mins int, k int, above bool) model.Vector {
+// GetSrcGlobUsage is a variable so tests can substitute canned results for Prometheus.
+var GetSrcGlobUsage = getSrcGlobUsage
+
+func getSrcGlobUsage(rate int, mins int, k int, above bool) model.Vector {
 
 	queryAPI := v1.NewAPI(promDb)
 
