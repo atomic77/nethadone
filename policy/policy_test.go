@@ -159,3 +159,16 @@ func TestPolicyForDeletedGlobIsSkipped(t *testing.T) {
 		t.Errorf("want only clientA's policy applied, got %+v", *applied)
 	}
 }
+
+func TestIntersect(t *testing.T) {
+	a := database.SrcGlob{Src: clientA, Glob: "yt"}
+	b := database.SrcGlob{Src: clientB, Glob: "yt"}
+	c := database.SrcGlob{Src: clientA, Glob: "rd"}
+	got := intersect([]database.SrcGlob{a, b, c}, []database.SrcGlob{c, a}, []database.SrcGlob{b, a})
+	if len(got) != 1 || got[0] != a {
+		t.Fatalf("intersect = %v, want [%v]", got, a)
+	}
+	if got := intersect([]database.SrcGlob{a}, nil); len(got) != 0 {
+		t.Fatalf("intersect with empty = %v, want []", got)
+	}
+}

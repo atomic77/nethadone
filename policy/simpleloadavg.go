@@ -8,7 +8,6 @@ import (
 	"github.com/atomic77/nethadone/database"
 	"github.com/atomic77/nethadone/handlers"
 	"github.com/atomic77/nethadone/models"
-	mapset "github.com/deckarep/golang-set/v2"
 )
 
 func InitPolicy() {
@@ -17,22 +16,35 @@ func InitPolicy() {
 	go pollPolicyCheck()
 }
 
-func createSrcGlobSet(sgs []database.SrcGlob) mapset.Set[database.SrcGlob] {
-	return mapset.NewSet(sgs...)
+// intersect returns the entries of a that are also in every one of rest.
+// GetSrcGlobUsage results come from map keys, so a has no duplicates.
+func intersect(a []database.SrcGlob, rest ...[]database.SrcGlob) []database.SrcGlob {
+	for _, b := range rest {
+		in := make(map[database.SrcGlob]bool, len(b))
+		for _, sg := range b {
+			in[sg] = true
+		}
+		var out []database.SrcGlob
+		for _, sg := range a {
+			if in[sg] {
+				out = append(out, sg)
+			}
+		}
+		a = out
+	}
+	return a
 }
 
-func getActiveGlobGroups() mapset.Set[database.SrcGlob] {
-	// Anything we get in s is a client that has exceeded the
+func getActiveGlobGroups() []database.SrcGlob {
+	// Anything returned is a client that has exceeded the
 	// policy for a given glob group
 
 	k, u := config.Cfg.ActivityThresholdBytes, config.Cfg.PolicyTimeUnit
-	s1 := createSrcGlobSet(database.GetSrcGlobUsage(2*u, 0, k, true))
-	s2 := createSrcGlobSet(database.GetSrcGlobUsage(2*u, 5*u, k, true))
-	s3 := createSrcGlobSet(database.GetSrcGlobUsage(5*u, 0, k, true))
-
-	s12 := s1.Intersect(s2)
-	s := s3.Intersect(s12)
-	return s
+	return intersect(
+		database.GetSrcGlobUsage(2*u, 0, k, true),
+		database.GetSrcGlobUsage(2*u, 5*u, k, true),
+		database.GetSrcGlobUsage(5*u, 0, k, true),
+	)
 }
 
 // See README "Increasing throttling" section for policy details
@@ -41,8 +53,8 @@ func increaseThrottling() bool {
 	changed := false
 	s := getActiveGlobGroups()
 
-	log.Println("Found ", s.Cardinality(), " globs for throttling")
-	for _, match := range s.ToSlice() {
+	log.Println("Found ", len(s), " globs for throttling")
+	for _, match := range s {
 		src_ip, glob := match.Src, match.Glob
 		p := database.GetPolicy(src_ip, glob)
 
@@ -79,10 +91,10 @@ func decreasingThrottling() bool {
 	changed := false
 	k, u := config.Cfg.ActivityThresholdBytes, config.Cfg.PolicyTimeUnit
 
-	s := createSrcGlobSet(database.GetSrcGlobUsage(5*u, 0, k, false))
+	s := database.GetSrcGlobUsage(5*u, 0, k, false)
 
-	log.Println(s.Cardinality(), " globs that can be decreased")
-	for _, match := range s.ToSlice() {
+	log.Println(len(s), " globs that can be decreased")
+	for _, match := range s {
 		src_ip, glob := match.Src, match.Glob
 		p := database.GetPolicy(src_ip, glob)
 
