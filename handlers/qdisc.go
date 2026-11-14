@@ -6,15 +6,8 @@ import (
 
 	"github.com/alecthomas/repr"
 	"github.com/atomic77/nethadone/config"
-	tc "github.com/florianl/go-tc"
-	"github.com/florianl/go-tc/core"
 	"github.com/vishvananda/netlink"
-	"golang.org/x/sys/unix"
 )
-
-func uint64ptr(v uint64) *uint64 {
-	return &v
-}
 
 const MBit = 1000 * 1000
 const KBit = 1000
@@ -188,29 +181,6 @@ func createLeafQdiscs(leaves *[]leafConfig) {
 
 		if err != nil {
 			log.Fatal("couldn't add leaf qdisc for ", repr.String(leaf), ":", err)
-		}
-	}
-}
-
-func attachQdiscToIface(tcnl *tc.Tc, iface *net.Interface) {
-
-	qdisc := tc.Object{
-		Msg: tc.Msg{
-			Family:  unix.AF_UNSPEC,
-			Ifindex: uint32(iface.Index),
-			Handle:  core.BuildHandle(tc.HandleRoot, 0x0000),
-			Parent:  tc.HandleMinEgress,
-			Info:    0,
-		},
-		Attribute: tc.Attribute{
-			Kind: "clsact",
-		},
-	}
-
-	if err := tcnl.Qdisc().Add(&qdisc); err != nil {
-		log.Println("couldn't add qdisc ", err)
-		if err := tcnl.Qdisc().Replace(&qdisc); err != nil {
-			log.Fatal("couldn't replace qdisc ", err)
 		}
 	}
 }

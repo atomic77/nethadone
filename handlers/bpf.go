@@ -20,7 +20,6 @@ import (
 	"github.com/miekg/dns"
 	"golang.org/x/sys/unix"
 
-	// "github.com/vishvananda/netlink"
 	"github.com/mdlayher/netlink"
 )
 
@@ -224,42 +223,6 @@ func reattachThrottler(objs *throttleObjects, ifname string, direction uint32) {
 	}
 }
 
-/*
-	func CompileBpf(tplfile string, target string, ips *[]models.IpPolicy) {
-		// Used for dynamic recompilation of tcfilt bpf program that will be
-		// continuously rendered based on the template and recompiled.
-		// It seems that this can't easily be done with bpf2go since the binary code
-		// gets compiled into the binary
-		// DNS packet sniffing BPF program that is static has been moved to bpf2go already
-
-		cfile := "/tmp/mybpfprog.c"
-		f, err := os.Create(cfile)
-		if err != nil {
-			log.Fatal("failed to create rendered file ", err)
-		}
-		tpl := template.Must(template.ParseFiles(tplfile))
-		type fdata struct {
-			IpPolicies *[]models.IpPolicy
-		}
-		err = tpl.Execute(f, fdata{IpPolicies: ips})
-		if err != nil {
-			log.Fatal("failed to render file ", err)
-		}
-
-		out, err := exec.Command(
-			// "su", "atomic", "-c",
-			// "clang", "-g", "-O2", "-I/usr/include/aarch64-linux-gnu", "-Wall", "-target", "bpf",
-			// "-c", file, "-o", target,
-			// `clang -g -O2 -I/usr/include/aarch64-linux-gnu -Wall -target bpf -c ` + cfile + " -o " + target,
-			"clang", "-g", "-O2", "-I/usr/include/aarch64-linux-gnu", "-Wall", "-target", "bpf",
-			"-c", cfile, "-o", target,
-		).CombinedOutput()
-		if err != nil {
-			log.Fatal("failed to compile ebpf prog, out: ", string(out), " err: ", err)
-		}
-		log.Println("Compilation output: ", string(out))
-	}
-*/
 func attachTrafficMonitor(ifname string, direction uint32) {
 
 	log.Println("Attaching bandwidth monitor BPF to if ", ifname, " direction ", direction)
@@ -374,13 +337,6 @@ func getTcnl() *tc.Tc {
 	if err != nil {
 		log.Fatal("Failed to get tc handle", err)
 	}
-	// Need to defer this to shutdown or another more appropriate time
-	// defer func() {
-	// 	log.Println("Cleaning up tcnl")
-	// 	if err := tcnl.Close(); err != nil {
-	// 		log.Printf("could not close rtnetlink socket: %v\n", err)
-	// 	}
-	// }()
 
 	err = tcnl.SetOption(netlink.ExtendedAcknowledge, true)
 	if err != nil {

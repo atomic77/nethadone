@@ -89,17 +89,3 @@ make test-vm KERNEL=v6.6.40
 
 CI (`.github/workflows/test.yml`) runs levels 1 and 2 on the runner kernel and
 level 2 again under virtme-ng.
-
-### Full VM image (d2vm)
-
-For a complete VM, build the Docker image and convert it with
-[`d2vm`](https://github.com/linka-cloud/d2vm):
-
-```bash
-docker buildx build -t atomic77/nethadone:latest .
-sudo d2vm convert atomic77/nethadone -o nethadone.qcow2 -p 1234
-d2vm run qemu --networking bridge,virbr0 --mem 4096 --cpus 4 ../nethadone.qcow2
-```
-
-For VMWare, convert with `qemu-img convert nethadone.qcow2 -O vmdk nethadone.vmdk`.
-VirtualBox has not worked well.

@@ -24,7 +24,7 @@ Data flow:
 | `handlers/` | Mixes HTTP handlers (`handlers.go`), eBPF loading and attaching (`bpf.go`), qdisc setup (`qdisc.go`), metrics (`prom.go`) and the preflight checks (`check.go`). |
 | `handlers/*_bpfe[lb].{go,o}` | **Generated** by bpf2go and committed. Do not hand-edit. |
 | `handlers/throttle.bpf.c.tpl` | Throttler template, embedded via `handlers/embed.go`. This is the real source; `ebpf/throttle.bpf.c` is a gitignored render. |
-| `ebpf/` | BPF C sources, `vmlinux.h`, plus an ad-hoc Makefile and the `dnsprobe.py` (bcc) prototype. |
+| `ebpf/` | BPF C sources and `vmlinux.h`. |
 | `policy/` | The SimpleLoadAverage policy loop. |
 | `models/` | Plain structs with `db:` tags. |
 | `views/` | Web UI: `views.templ` (templ components, Pico.css + HTMX, `hx-boost` on `<body>`), vendored assets in `views/static/` embedded via `views/embed.go`. `views_templ.go` is **generated** and committed: edit the `.templ` and run `make generate`. |
@@ -35,7 +35,7 @@ Data flow:
 
 ```bash
 go build ./...                 # compiles on any Linux host, no cgo
-make build-binary              # ./nethadone in the repo root (not gitignored, don't commit it)
+make build                     # ./nethadone in the repo root (not gitignored, don't commit it)
 make all                       # cross-compile arm, arm64, amd64 into build/
 make run-root NTH_LAN=lan0 NTH_WAN=eth0   # build + sudo run with config/nethadone.yml
 go generate ./handlers         # regenerate bpf2go output after editing dnspkt/trafficmon .bpf.c (needs clang)
@@ -44,7 +44,7 @@ make generate                  # regenerate views/views_templ.go after editing v
 
 Usage: `nethadone [check] [flags]`. `check` runs the read-only preflight checks (`handlers.Check`) and exits non-zero on failure; the same checks run at every startup. Flags: `-wan-interface`, `-lan-interface` and `-config-file` (default `/etc/nethadone/nethadone.yml`). The flags override the YAML. A missing default config falls back to the defaults; a missing `-config-file` that was passed explicitly is fatal, and unknown YAML keys are fatal. An empty `wan_interface` (the default) means the interface holding the IPv4 default route.
 
-Runtime requirements on the target: root, a kernel with BTF, `clang` and the libbpf/kernel headers (the throttler is compiled on the device; include paths are hardcoded for aarch64 and armv7 in `handlers/bpf.go:rebuildBpf`; `nethadone check` test-compiles it). No Prometheus is needed; `/metrics` is only for people who want graphs. The Docker image is only a convenient way to build a dev VM (see `doc/development.md`, which uses d2vm). Containers cannot run nethadone itself.
+Runtime requirements on the target: root, a kernel with BTF, `clang` and the libbpf/kernel headers (the throttler is compiled on the device; include paths are hardcoded for aarch64 and armv7 in `handlers/bpf.go:rebuildBpf`; `nethadone check` test-compiles it). No Prometheus is needed; `/metrics` is only for people who want graphs.
 
 The CI workflow `.github/workflows/build-nethadone-binary.yml` (manual dispatch) runs `make all` and publishes a dated release.
 
@@ -79,9 +79,7 @@ Test seams are package variables: `database.GetSrcGlobUsage` (usage rates) and `
 - `database.Connect`: `sqlx.Open` errors are checked only after `.DB.SetMaxOpenConns` has already been called on the result.
 - `handlers.Initialize` applies a hardcoded placeholder policy (`192,168,0,174`, class 10) at startup.
 - `handlers/bpf.go`: `attachTrafficMonitor` and `reattachThrottler` log "DNS sniffer" in their error messages (copy-paste).
-- Large commented-out blocks remain (old `CompileBpf`, tcnl close). Prefer deleting dead code over adding more.
 
 ## Working in this repo
 
-- Never run the binary, `make run-root`, `make clean-tc` or the `ebpf/Makefile` `rebuild*` and `detach-all` targets on a dev workstation. They delete or replace qdiscs and tc filters on real interfaces (`eth0`/`eth1`/`lan0`) and can cut your network. Use `scripts/netns-lab.sh`, which runs the binary inside a network namespace.
-- `Makefile` targets `up`/`up-silent` reference `./app`. They are stale template leftovers.
+- Never run the binary or `make run-root` on a dev workstation. They delete or replace qdiscs and tc filters on real interfaces (`eth0`/`eth1`/`lan0`) and can cut your network. Use `scripts/netns-lab.sh`, which runs the binary inside a network namespace.

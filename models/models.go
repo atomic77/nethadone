@@ -5,16 +5,6 @@ import (
 	"time"
 )
 
-var schema string
-
-type DnsProbe struct {
-	Saddr  string    `db:"saddr"`
-	Daddr  string    `db:"daddr"`
-	Dport  int       `db:"dport"`
-	Domain string    `db:"domain"`
-	Tstamp time.Time `db:"tstamp"`
-}
-
 type GlobGroup struct {
 	Name        string `db:"name"`
 	Description string `db:"description"`
