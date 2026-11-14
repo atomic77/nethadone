@@ -2,6 +2,9 @@ package views
 
 import "embed"
 
-//go:embed *.tpl
-//go:embed **/*.tpl
-var EmbedTemplates embed.FS
+//go:generate go tool templ generate
+
+// Static holds the vendored Pico.css, HTMX and the favicon, served under /static/.
+//
+//go:embed static
+var Static embed.FS

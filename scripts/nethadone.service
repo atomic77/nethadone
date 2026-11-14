@@ -1,0 +1,16 @@
+[Unit]
+Description=Nethadone
+Documentation=https://github.com/atomic77/nethadone
+Wants=network-online.target
+After=network-online.target NetworkManager.service
+
+[Service]
+Restart=on-failure
+RestartSec=10
+RuntimeMaxSec=86400
+# Creates /var/lib/nethadone for the sqlite databases
+StateDirectory=nethadone
+ExecStart=/usr/local/bin/nethadone -config-file /etc/nethadone/nethadone.yml
+
+[Install]
+WantedBy=multi-user.target

@@ -127,10 +127,9 @@ func generateQdiscLeafNodes(iface *net.Interface) []leafConfig {
 
 	for i := 1; i <= config.Cfg.NumQdiscClasses; i++ {
 
-		factor := float64(i) / float64(config.Cfg.NumQdiscClasses)
-		scaledRate := (1-factor)*float64((config.Cfg.StartRateKbs-config.Cfg.MinRateKbs)) + float64(config.Cfg.MinRateKbs)
-		scaledRate *= KBit
-		scaledDelay := factor * float64(config.Cfg.MaxDelayMs) * Ms
+		rateKbs, delayMs := leafRate(i)
+		scaledRate := rateKbs * KBit
+		scaledDelay := delayMs * Ms
 		lc := leafConfig{
 			Rate:     uint64(scaledRate),
 			Ceil:     uint64(scaledRate),
@@ -144,6 +143,13 @@ func generateQdiscLeafNodes(iface *net.Interface) []leafConfig {
 	}
 
 	return leaves
+}
+
+// leafRate is the rate (kbit/s) and added delay (ms) of scaled leaf i, 1 <= i <= NumQdiscClasses.
+func leafRate(i int) (rateKbs, delayMs float64) {
+	factor := float64(i) / float64(config.Cfg.NumQdiscClasses)
+	return (1-factor)*float64(config.Cfg.StartRateKbs-config.Cfg.MinRateKbs) + float64(config.Cfg.MinRateKbs),
+		factor * float64(config.Cfg.MaxDelayMs)
 }
 
 // leafHandle is the tc minor of leaf class idx; it must equal the 0x{{ .ClassId }}

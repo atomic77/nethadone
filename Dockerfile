@@ -43,9 +43,7 @@ RUN cd /src && git clone --depth 1 -b v0.29.1 https://github.com/iovisor/bcc.git
 # TODO Figure out what we can clean up from the src build directories
 
 # Create the `public` dir and copy all the assets into it
-RUN mkdir ./static ./views ./ebpf
-COPY ./static ./static
-COPY ./views ./views
+RUN mkdir ./ebpf
 COPY ./ebpf ./ebpf
 
 COPY --from=build /go/src/nethadone/nethadone .

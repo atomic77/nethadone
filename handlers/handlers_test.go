@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"fmt"
 	"net"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -93,4 +96,39 @@ func TestHandleDnsPacket(t *testing.T) {
 		}
 	}
 	handleDnsPacket([]byte{0xde, 0xad}) // garbage must not panic
+}
+
+func TestClassLabel(t *testing.T) {
+	config.Cfg.NumQdiscClasses, config.Cfg.StartRateKbs, config.Cfg.MinRateKbs, config.Cfg.MaxDelayMs = 5, 1000, 50, 50
+	for c, want := range map[int]string{10: "unthrottled", 20: "810 kbit/s, +10 ms", 60: "50 kbit/s, +50 ms"} {
+		if got := classLabel(c); got != want {
+			t.Errorf("classLabel(%d) = %q, want %q", c, got, want)
+		}
+	}
+}
+
+func TestGlobForm(t *testing.T) {
+	connectTempDb(t)
+	post := func(h http.HandlerFunc, form url.Values) *httptest.ResponseRecorder {
+		req := httptest.NewRequest("POST", "/globs", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rec := httptest.NewRecorder()
+		h(rec, req)
+		return rec
+	}
+	for _, bad := range []url.Values{{"name": {"x"}}, {"name": {"x"}, "glob": {"[bad"}}} {
+		if rec := post(GlobAdd, bad); rec.Code != http.StatusUnprocessableEntity || !strings.Contains(rec.Body.String(), `role="alert"`) {
+			t.Errorf("%v: got %d, want 422 with an error", bad, rec.Code)
+		}
+	}
+	ok := url.Values{"name": {"yt"}, "glob": {"*.youtube.com"}}
+	if rec := post(GlobAdd, ok); rec.Code != http.StatusSeeOther || database.GetGlob("yt") == nil {
+		t.Fatalf("add: got %d, glob %v", rec.Code, database.GetGlob("yt"))
+	}
+	if rec := post(GlobAdd, ok); rec.Code != http.StatusUnprocessableEntity {
+		t.Errorf("duplicate add: got %d, want 422", rec.Code)
+	}
+	if rec := post(GlobDelete, url.Values{"name": {"yt"}}); rec.Code != http.StatusSeeOther || database.GetGlob("yt") != nil {
+		t.Errorf("delete: got %d, glob still present: %v", rec.Code, database.GetGlob("yt") != nil)
+	}
 }

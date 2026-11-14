@@ -122,3 +122,5 @@ jobs:
           asset_name: ${{ steps.output.outputs.FILE_DISPLAY_NAME }}
           tag: ${{ needs.generate_release_info.outputs.release_name }}
           overwrite: true
+          # Keep "latest" pointing at the newest nethadone binary release (install.sh downloads from it)
+          make_latest: false

@@ -14,10 +14,6 @@ import (
 	"github.com/atomic77/nethadone/handlers"
 	"github.com/atomic77/nethadone/policy"
 	"github.com/atomic77/nethadone/views"
-	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/middleware/adaptor"
-	"github.com/gofiber/fiber/v2/middleware/logger"
-	"github.com/gofiber/template/html/v2"
 )
 
 func main() {
@@ -70,30 +66,19 @@ func main() {
 	database.Connect()
 	handlers.Initialize()
 
-	// Use embedded templates
-	engine := html.NewFileSystem(http.FS(views.EmbedTemplates), ".tpl")
-	app := fiber.New(fiber.Config{
-		Views: engine,
-	})
-
-	app.Use(logger.New())
-
-	app.Get("/", handlers.Index)
-	app.Get("/interfaces", handlers.Interfaces)
-	app.Get("/devices", handlers.Devices)
-	app.Get("/policies", handlers.Policies)
-	app.Get("/bandwidth", handlers.Bandwidth)
-	app.Get("/globs", handlers.Globs)
-	app.Post("/globs/add", handlers.GlobAdd)
-
 	handlers.InitMetrics()
 	policy.InitPolicy()
 
-	app.Get("/metrics", adaptor.HTTPHandlerFunc(handlers.MetricsHandleFunc))
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /{$}", handlers.Index)
+	mux.HandleFunc("GET /policies", handlers.Policies)
+	mux.HandleFunc("GET /bandwidth", handlers.Bandwidth)
+	mux.HandleFunc("GET /globs", handlers.Globs)
+	mux.HandleFunc("POST /globs", handlers.GlobAdd)
+	mux.HandleFunc("POST /globs/delete", handlers.GlobDelete)
+	mux.HandleFunc("GET /metrics", handlers.MetricsHandleFunc)
+	mux.Handle("GET /static/", http.FileServerFS(views.Static))
 
-	app.Get("/favicon.ico", func(c *fiber.Ctx) error {
-		return c.SendFile("static/laptop.svg")
-	})
-
-	log.Fatal(app.Listen(":3000"))
+	// The UI has no login, so at least refuse cross-site form posts from other pages the user visits.
+	log.Fatal(http.ListenAndServe(":3000", http.NewCrossOriginProtection().Handler(mux)))
 }

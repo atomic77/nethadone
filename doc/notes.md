@@ -9,13 +9,6 @@ https://netdevconf.info//0x14/pub/papers/55/0x14-paper55-talk-paper.pdf
 http://vger.kernel.org/lpc_bpf2018_talks/lpc-bpf-2018-shaping.pdf
 https://qmonnet.github.io/whirl-offload/2020/04/11/tc-bpf-direct-action/
 
-## Setup
-
-```bash
-apt-get install -y apt-transport-https ca-certificates curl clang llvm jq libelf-dev libpcap-dev libbfd-dev binutils-dev build-essential make linux-tools-common linux-tools-$(uname -r) bpfcc-tools python3-pip
-```
-
-
 ## TC ingress example
 
 Replace qdisc for interface w/ FQ root. Unsure why the initial creation of clsact

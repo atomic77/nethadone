@@ -67,7 +67,7 @@ run() {
 	# Seed the glob group once the web server is up
 	(for _ in $(seq 30); do
 		curl -sf -o /dev/null -d name=youtube -d 'glob=*.youtube.test.' -d description=lab \
-			http://10.30.0.2:3000/globs/add && break
+			http://10.30.0.2:3000/globs && break
 		sleep 1
 	done) &
 	cd "$LAB" && nsx $R "$REPO/build/nethadone-lab" -config-file nethadone.yml
@@ -84,8 +84,12 @@ traffic() {
 
 status() {
 	echo "== policies"; sqlite3 "$LAB/cfg.db" 'SELECT * FROM policy' || true
-	echo "== lan0 classes"; nsx $R tc -s class show dev lan0 | grep -E '^class|Sent' || true
-	echo "== metrics"; curl -s http://10.30.0.2:3000/metrics | grep '^ip_pair' | head || true
+	# Unthrottled pairs get no classid and go HTB "direct", unshaped and outside every class counter;
+	# veth runs at ~25 Gbit/s, so compare the map/metrics bytes with this total, not the classes.
+	echo "== lan0 qdisc total (includes unthrottled direct traffic)"
+	nsx $R tc -s qdisc show dev lan0 | grep -A1 '^qdisc htb' || true
+	echo "== lan0 classes (throttled traffic only)"; nsx $R tc -s class show dev lan0 | grep -E '^class|Sent' || true
+	echo "== metrics (IP bytes; tc also counts 14B Ethernet headers)"; curl -s http://10.30.0.2:3000/metrics | grep '^ip_pair' | head || true
 }
 
 down() {

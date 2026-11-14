@@ -97,6 +97,11 @@ func AddGlob(g *models.GlobGroup) error {
 	return err
 }
 
+func DeleteGlob(name string) error {
+	_, err := cfgDb.Exec("DELETE FROM glob_group WHERE name = $1", name)
+	return err
+}
+
 func AddDns(domain string, ipaddr *net.IP) error {
 
 	sql := `INSERT INTO dns VALUES (:saddr, :daddr, :domain, datetime())

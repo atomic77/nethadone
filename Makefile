@@ -11,8 +11,8 @@ help: ## This help dialog.
 run-local: ## Run the app locally
 	go run ./cmd/nethadone.go
 
-dev:
-	fiber dev -t cmd/nethadone.go
+generate: ## Regenerate templ views (views/*_templ.go)
+	go generate ./views
 
 requirements: ## Generate go.mod & go.sum files
 	go mod tidy

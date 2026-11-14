@@ -10,6 +10,9 @@ Go (see `go.mod`). For the BPF levels: root, a kernel with BTF, and
 Running `go generate ./handlers` (rebuilding `dnspkt`/`trafficmon`) on x86 also
 needs `gcc-multilib`, because those sources include libc headers.
 
+`sudo build/nethadone check -lan-interface <if>` is read-only (it loads the
+throttler into the kernel without attaching it), so it is safe on a workstation.
+
 ### 1. Unit tests: `make test`
 
 No root, no kernel features. Covers the policy loop (with the usage rates and the
@@ -52,7 +55,7 @@ only see `lan0`, `wan0` and `mgmt0`, so the host's interfaces are never touched.
 sudo scripts/netns-lab.sh up        # or: make lab-up
 sudo scripts/netns-lab.sh run       # foreground; UI at http://10.30.0.2:3000
 sudo scripts/netns-lab.sh traffic   # another shell: DNS lookups + iperf3 downloads
-sudo scripts/netns-lab.sh status    # policies, per-class qdisc counters, metrics
+sudo scripts/netns-lab.sh status    # policies, qdisc total + per-class counters, metrics
 sudo scripts/netns-lab.sh down
 ```
 
@@ -63,6 +66,12 @@ seconds; class 60 is reached in about 3 minutes (`traffic` runs 240 s by default
 
 Unthrottled traffic shows up in the HTB `direct_packets_stat`, not class `1:10`:
 the throttler filter's default classid is `1:0`, which HTB treats as direct.
+Direct traffic is unshaped and never counted by any class, so when checking the
+`src_dest_bytes` map or `/metrics`, compare against the qdisc `Sent` total that
+`status` prints (tc also counts the 14-byte Ethernet header, so it reads 2–4%
+higher). Expect huge numbers: the lab links are veth pairs and unthrottled
+iperf3 runs at ~25 Gbit/s, so the first minute of `traffic` alone moves well
+over 100 GB.
 
 ### 4. Specific kernels: `make test-vm`
 

@@ -1,6 +1,9 @@
 package models
 
-import "time"
+import (
+	"net"
+	"time"
+)
 
 var schema string
 
@@ -37,4 +40,20 @@ type IpPolicy struct {
 	SrcIpAddr  string
 	DestIpAddr string
 	ClassId    int // The 'integer' part, not including 0x
+}
+
+// Bandwidth is one (LAN client, remote IP) pair from the trafficmon map, for the UI.
+type Bandwidth struct {
+	SrcIpAddr  net.IP
+	DestIpAddr net.IP
+	Bytes      uint64
+	ProbDomain string
+	GlobName   string
+}
+
+// Iface is a network interface as shown on the status page.
+type Iface struct {
+	Name  string
+	Up    bool
+	Addrs []string
 }
