@@ -12,6 +12,14 @@ import (
 	"github.com/cilium/ebpf"
 )
 
+// Names of all BPF objects in the ELF.
+//
+// Used for safe lookups in a Collection or CollectionSpec.
+const (
+	trafficmonMapSrcDestBytes = "src_dest_bytes"
+	trafficmonProgTrafficMon  = "traffic_mon"
+)
+
 // loadTrafficmon returns the embedded CollectionSpec for trafficmon.
 func loadTrafficmon() (*ebpf.CollectionSpec, error) {
 	reader := bytes.NewReader(_TrafficmonBytes)
@@ -32,7 +40,7 @@ func loadTrafficmon() (*ebpf.CollectionSpec, error) {
 //	*trafficmonMaps
 //
 // See ebpf.CollectionSpec.LoadAndAssign documentation for details.
-func loadTrafficmonObjects(obj interface{}, opts *ebpf.CollectionOptions) error {
+func loadTrafficmonObjects(obj any, opts *ebpf.CollectionOptions) error {
 	spec, err := loadTrafficmon()
 	if err != nil {
 		return err
@@ -47,9 +55,10 @@ func loadTrafficmonObjects(obj interface{}, opts *ebpf.CollectionOptions) error 
 type trafficmonSpecs struct {
 	trafficmonProgramSpecs
 	trafficmonMapSpecs
+	trafficmonVariableSpecs
 }
 
-// trafficmonSpecs contains programs before they are loaded into the kernel.
+// trafficmonProgramSpecs contains programs before they are loaded into the kernel.
 //
 // It can be passed ebpf.CollectionSpec.Assign.
 type trafficmonProgramSpecs struct {
@@ -63,12 +72,19 @@ type trafficmonMapSpecs struct {
 	SrcDestBytes *ebpf.MapSpec `ebpf:"src_dest_bytes"`
 }
 
+// trafficmonVariableSpecs contains global variables before they are loaded into the kernel.
+//
+// It can be passed ebpf.CollectionSpec.Assign.
+type trafficmonVariableSpecs struct {
+}
+
 // trafficmonObjects contains all objects after they have been loaded into the kernel.
 //
 // It can be passed to loadTrafficmonObjects or ebpf.CollectionSpec.LoadAndAssign.
 type trafficmonObjects struct {
 	trafficmonPrograms
 	trafficmonMaps
+	trafficmonVariables
 }
 
 func (o *trafficmonObjects) Close() error {
@@ -89,6 +105,12 @@ func (m *trafficmonMaps) Close() error {
 	return _TrafficmonClose(
 		m.SrcDestBytes,
 	)
+}
+
+// trafficmonVariables contains all global variables after they have been loaded into the kernel.
+//
+// It can be passed to loadTrafficmonObjects or ebpf.CollectionSpec.LoadAndAssign.
+type trafficmonVariables struct {
 }
 
 // trafficmonPrograms contains all programs after they have been loaded into the kernel.
