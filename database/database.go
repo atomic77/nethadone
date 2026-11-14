@@ -3,6 +3,8 @@ package database
 import (
 	"log"
 	"net"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/atomic77/nethadone/config"
@@ -38,6 +40,12 @@ func Connect() {
 			tstamp timestamp,
 			PRIMARY KEY (src_ip, glob_group)	
 		);`,
+	}
+
+	for _, db := range []string{config.Cfg.DnsDb, config.Cfg.CfgDb} {
+		if err := os.MkdirAll(filepath.Dir(db), 0o750); err != nil {
+			log.Fatal("could not create database directory: ", err)
+		}
 	}
 
 	dnsDb, err = sqlx.Open("sqlite", config.Cfg.DnsDb+"?mode=rw&busy_timeout=1000")

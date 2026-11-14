@@ -1,6 +1,7 @@
 package config
 
 import (
+	"io"
 	"log"
 	"os"
 	"time"
@@ -9,12 +10,13 @@ import (
 )
 
 var baseConfig = Config{
-	WanInterface: "eth0",
+	// Empty means "the interface holding the default route", resolved at startup
+	WanInterface: "",
 	LanInterface: "lan0",
 	WanMbps:      100,
 
-	CfgDb: "/root/cfg.db",
-	DnsDb: "/root/dns.db",
+	CfgDb: "/var/lib/nethadone/cfg.db",
+	DnsDb: "/var/lib/nethadone/dns.db",
 
 	MapCollectionInterval: time.Second * 30,
 	PolicyCheckInterval:   time.Minute * 1,
@@ -75,17 +77,27 @@ type Config struct {
 	PolicyTimeUnit time.Duration `yaml:"policy_time_unit"`
 }
 
-func ParseConfig(file string) {
+// DefaultFile is where install.sh puts the config and the systemd unit reads it.
+const DefaultFile = "/etc/nethadone/nethadone.yml"
+
+// ParseConfig loads file over the defaults. A missing file is fatal when
+// required (the user named it), otherwise nethadone proceeds with defaults.
+func ParseConfig(file string, required bool) {
 	f, err := os.Open(file)
 	if err != nil {
-		log.Println("configuration file could not be parsed; proceeding with defaults")
+		if required {
+			log.Fatalln("could not open configuration file: ", err)
+		}
+		log.Println("no configuration file at ", file, "; proceeding with defaults")
 		return
 	}
 	defer f.Close()
 
 	decoder := yaml.NewDecoder(f)
+	// Catch typos in keys instead of silently ignoring them
+	decoder.KnownFields(true)
 	err = decoder.Decode(&Cfg)
-	if err != nil {
-		log.Fatalln("failed to parse configuration file ", err)
+	if err != nil && err != io.EOF {
+		log.Fatalln("failed to parse configuration file ", file, ": ", err)
 	}
 }

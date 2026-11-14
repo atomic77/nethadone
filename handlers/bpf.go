@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -89,19 +90,39 @@ func Initialize() {
 }
 
 func ApplyPolicies(ipPolicies *[]models.IpPolicy) {
+	objs, err := buildThrottler(ipPolicies)
+	if err != nil {
+		log.Fatal(err)
+	}
+	reattachThrottler(objs, config.Cfg.LanInterface, tc.HandleMinEgress)
+}
+
+// buildThrottler renders the throttler for ipPolicies, compiles it with clang
+// and loads it into the kernel (running the verifier) without attaching it.
+func buildThrottler(ipPolicies *[]models.IpPolicy) (*throttleObjects, error) {
 	targFile, err := os.CreateTemp("", "throttle-*.bpf.c")
 	if err != nil {
-		log.Fatal("could not create throttler file: ", err)
+		return nil, fmt.Errorf("could not create throttler file: %w", err)
 	}
+	defer os.Remove(targFile.Name())
 	objFile, err := os.CreateTemp("", "throttle-*.o")
 	if err != nil {
-		log.Fatal("could not create throttler object file: ", err)
+		return nil, fmt.Errorf("could not create throttler object file: %w", err)
 	}
+	defer os.Remove(objFile.Name())
 
-	rebuildBpf("throttle.bpf.c.tpl", targFile, objFile, ipPolicies)
-	reattachThrottler(objFile, config.Cfg.LanInterface, tc.HandleMinEgress)
-	os.Remove(targFile.Name())
-	os.Remove(objFile.Name())
+	if err := rebuildBpf("throttle.bpf.c.tpl", targFile, objFile, ipPolicies); err != nil {
+		return nil, err
+	}
+	spec, err := ebpf.LoadCollectionSpec(objFile.Name())
+	if err != nil {
+		return nil, fmt.Errorf("failed to load throttler spec: %w", err)
+	}
+	objs := &throttleObjects{}
+	if err := spec.LoadAndAssign(objs, nil); err != nil {
+		return nil, fmt.Errorf("verifier rejected throttler: %w", err)
+	}
+	return objs, nil
 }
 
 func renderThrottler(w io.Writer, tplfile string, ipPolicies *[]models.IpPolicy) error {
@@ -109,26 +130,27 @@ func renderThrottler(w io.Writer, tplfile string, ipPolicies *[]models.IpPolicy)
 	return tpl.Execute(w, struct{ IpPolicies *[]models.IpPolicy }{ipPolicies})
 }
 
-func rebuildBpf(tplfile string, target *os.File, objFile *os.File, ipPolicies *[]models.IpPolicy) {
+func rebuildBpf(tplfile string, target *os.File, objFile *os.File, ipPolicies *[]models.IpPolicy) error {
 	log.Println("Rebuilding with ", len(*ipPolicies), " throttle targets from policy database")
 	log.Println("Temporary file ", target.Name())
 	if err := renderThrottler(target, tplfile, ipPolicies); err != nil {
-		log.Fatal("failed to render file ", err)
+		return fmt.Errorf("failed to render throttler: %w", err)
 	}
 	// FIXME There surely must be a better way of doing this dynamically
 	cmd := exec.Command(
 		"clang", "-g", "-O2",
-		// Include both armv7 and aarch64 include folders, plus x86_64 for dev machines
-		"-I/usr/include/aarch64-linux-gnu", "-I/usr/arm-linux-gnueabi/include", "-I/usr/include/x86_64-linux-gnu",
+		// asm/ UAPI headers live in the multiarch folder: aarch64, armv7 (native armhf or the
+		// armel cross package), plus x86_64 for dev machines
+		"-I/usr/include/aarch64-linux-gnu", "-I/usr/include/arm-linux-gnueabihf", "-I/usr/arm-linux-gnueabi/include", "-I/usr/include/x86_64-linux-gnu",
 		"-Wall", "-target", "bpf", "-c", target.Name(), "-o", objFile.Name(),
 	)
 	cmd.Dir = os.TempDir()
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		log.Fatal("failed to rebuild throttler eBPF, out: ", string(out), " err: ", err)
+		return fmt.Errorf("failed to compile throttler eBPF: %w\n%s", err, out)
 	}
 	log.Println("Compilation output: ", string(out))
-
+	return nil
 }
 
 func cleanupThrottler(iface *net.Interface) {
@@ -157,7 +179,7 @@ func cleanupThrottler(iface *net.Interface) {
 
 }
 
-func reattachThrottler(objFile *os.File, ifname string, direction uint32) {
+func reattachThrottler(objs *throttleObjects, ifname string, direction uint32) {
 
 	log.Println("(Re)attaching throttler BPF to if ", ifname, " direction ", direction)
 
@@ -168,16 +190,7 @@ func reattachThrottler(objFile *os.File, ifname string, direction uint32) {
 	}
 
 	cleanupThrottler(iface)
-
-	BpfCtx.ThrottleObjs = &throttleObjects{}
-	spec, err := ebpf.LoadCollectionSpec(objFile.Name())
-	if err != nil {
-		log.Fatal("failed to load spec ", err)
-	}
-
-	if err = spec.LoadAndAssign(BpfCtx.ThrottleObjs, nil); err != nil {
-		log.Fatal("failed to load and assign prog spec", err)
-	}
+	BpfCtx.ThrottleObjs = objs
 
 	fd := uint32(BpfCtx.ThrottleObjs.Prog.FD())
 	flags := uint32(0x1)

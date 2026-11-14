@@ -1,10 +1,15 @@
-# The WAN interface should have access to the internet
-wan_interface: "eth0"
-# The LAN interface is where your local devices are
-lan_interface: "eth1"
+# Copy to /etc/nethadone/nethadone.yml (scripts/install.sh does this for you).
+# Values shown are the built-in defaults; unknown keys are rejected.
+# Run `sudo nethadone check` after editing.
 
-cfg_db: "/root/cfg.db"
-dns_db: "/root/dns.db"
+# The WAN interface should have access to the internet.
+# Empty means the interface holding the default route.
+wan_interface: ""
+# The LAN interface is where your local devices are (e.g. wlan0 for a hotspot)
+lan_interface: "lan0"
+
+cfg_db: "/var/lib/nethadone/cfg.db"
+dns_db: "/var/lib/nethadone/dns.db"
 
 ###
 # Operational parameters
@@ -40,11 +45,13 @@ min_rate_kbs: 50
 # comments on Reddit or Twitter), and involve some idle periods, 
 # this can be set to a very low number like 0. For more bandwidth heavy
 # sites, a larger number may make sense. 
-activity_threshold_bytes: 1
+activity_threshold_bytes: 100
 # How long before we'll consider a change to policy;
 # setting this lower will cause clients to be moved up and
 # down bandwidth classes faster
-policy_backoff_interval: 2m# Unit of the policy's rate windows: activity is checked over 2 units now,
+policy_backoff_interval: 3m
+
+# Unit of the policy's rate windows: activity is checked over 2 units now,
 # 2 units ending 5 units ago and 5 units now (see policy/README.md).
 # Leave at 1m; shorter values are only for testing (e.g. the netns lab).
 policy_time_unit: 1m

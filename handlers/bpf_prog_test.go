@@ -134,17 +134,9 @@ func loadThrottler(t *testing.T, policies []models.IpPolicy) *throttleObjects {
 	if _, err := os.Stat("/usr/include/bpf/bpf_helpers.h"); err != nil {
 		t.Skip("libbpf headers not installed (libbpf-dev)")
 	}
-	src, _ := os.CreateTemp(t.TempDir(), "throttle-*.bpf.c")
-	obj, _ := os.CreateTemp(t.TempDir(), "throttle-*.o")
-	rebuildBpf("throttle.bpf.c.tpl", src, obj, &policies)
-
-	spec, err := ebpf.LoadCollectionSpec(obj.Name())
+	objs, err := buildThrottler(&policies)
 	if err != nil {
 		t.Fatal(err)
-	}
-	objs := &throttleObjects{}
-	if err := spec.LoadAndAssign(objs, nil); err != nil {
-		t.Fatal("verifier rejected throttler: ", err)
 	}
 	t.Cleanup(func() { objs.Map.Close(); objs.Prog.Close() })
 	return objs
