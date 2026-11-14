@@ -8,6 +8,13 @@ on:
         required: true
         default: "main"
 
+permissions:
+  contents: write
+
+env:
+  GH_REPO: ${{ github.repository }}
+  GH_TOKEN: ${{ github.token }}
+
 jobs:
   generate_release_info:
     runs-on: ubuntu-22.04
@@ -16,8 +23,16 @@ jobs:
     steps:
       - id: generate_release_name
         run: |
-          echo "release_name=btf-kernel" >> "$GITHUB_OUTPUT"
-        #   echo "release_name=btf-kernel-$(date -u -I)" >> "$GITHUB_OUTPUT"
+          echo "release_name=kernel-$(date -u -I)" >> "$GITHUB_OUTPUT"
+
+      # Created once here so the parallel build jobs don't race to create it.
+      # --latest=false keeps "latest" on the nethadone binary release (install.sh downloads from it).
+      - name: Create release
+        run: |
+          tag=${{ steps.generate_release_name.outputs.release_name }}
+          gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" --latest=false \
+            --title "BTF kernels $(date -u -I)" \
+            --notes "Armbian kernel packages with BTF and cls_bpf, built from armbian/build ${{ github.event.inputs.build_repo_branch }}."
 
   build:
     # Adapted from build.yml at https://github.com/daeuniverse/armbian-btf-kernel.
@@ -33,6 +48,10 @@ jobs:
             # 6.6 kernels untested so far
             - boardfamily: sunxi
               branch: legacy
+              representative: orangepi-r1
+            # Stock Armbian 'current' (6.18 as of 26.11) has BTF but lacks CONFIG_NET_CLS_BPF
+            - boardfamily: sunxi
+              branch: current
               representative: orangepi-r1
             # TODO Enable for others as needed
             - boardfamily: rockchip64
@@ -102,25 +121,10 @@ jobs:
           CONFIG_UPROBE_EVENTS=y" >> config/kernel/linux-"$BOARD_FAMILY"-"$BRANCH".config
 
           # Compile kernel only. Recent changes to armbian make this simpler 
-          ./compile.sh kernel ALLOW_ROOT=yes RELEASE=noble BOARD="$BOARD_NAME" BRANCH="$BRANCH" 
+          ./compile.sh kernel ALLOW_ROOT=yes RELEASE=resolute BOARD="$BOARD_NAME" BRANCH="$BRANCH" 
 
-      - name: Extract Output
-        id: output
+      # Armbian deb names carry branch and family (linux-image-current-sunxi_...), so assets from different jobs don't collide
+      - name: Upload .deb files to release
         run: |
-          cd build/output/debs/
-          outfile=kernel-${BRANCH}-${BOARD_FAMILY}-${BOARD_NAME}.tar.gz 
-          tar czf ${outfile} linux-*-${BRANCH}-${BOARD_FAMILY}_*.deb
-          fpath=$(realpath ${outfile})
-          echo "FILE_DISPLAY_NAME=${outfile}" >> $GITHUB_OUTPUT
-          echo "FILEPATH=${fpath}" >> $GITHUB_OUTPUT
-
-      - name: Upload binaries to release
-        uses: svenstaro/upload-release-action@v2
-        with:
-          repo_name: atomic77/nethadone
-          file: ${{ steps.output.outputs.FILEPATH }}
-          asset_name: ${{ steps.output.outputs.FILE_DISPLAY_NAME }}
-          tag: ${{ needs.generate_release_info.outputs.release_name }}
-          overwrite: true
-          # Keep "latest" pointing at the newest nethadone binary release (install.sh downloads from it)
-          make_latest: false
+          gh release upload "${{ needs.generate_release_info.outputs.release_name }}" --clobber \
+            build/output/debs/linux-*-${BRANCH}-${BOARD_FAMILY}_*.deb
