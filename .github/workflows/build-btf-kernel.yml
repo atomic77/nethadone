@@ -44,8 +44,7 @@ jobs:
     strategy:
         matrix:
           include:
-            # 'legacy' as of armbian 24.8 based on Ubuntu Noble uses 6.1 kernel which is what has been tested. 
-            # 6.6 kernels untested so far
+            # 'legacy' (6.12 as of armbian 26.11) is the kernel that has been tested.
             - boardfamily: sunxi
               branch: legacy
               representative: orangepi-r1
@@ -53,10 +52,11 @@ jobs:
             - boardfamily: sunxi
               branch: current
               representative: orangepi-r1
-            # TODO Enable for others as needed
-            - boardfamily: rockchip64
-              branch: legacy
-              representative: orangepi-r1plus
+            # TODO Enable others as needed;
+            # Recent builds for r1plus and orangepizero2 have BTF / CONFIG_NET_CLS_BPF kernels out of the box
+            # - boardfamily: rockchip64
+            #   branch: legacy
+            #   representative: orangepi-r1plus
         fail-fast: false
     env:
       BOARD_FAMILY: ${{ matrix.boardfamily }}

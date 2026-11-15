@@ -12,10 +12,11 @@ Getting nethadone onto a board takes four steps:
 | Board | Arch | Kernel | BTF kernel source | Status |
 |---|---|---|---|---|
 | Orange Pi R1 / Zero | armv7 | Armbian `legacy` sunxi 6.1 | `btf-kernel` release (`kernel-legacy-sunxi-orangepi-r1.tar.gz`) | tested |
+| Orange Pi R1 / Zero | armv7 | Armbian `current` sunxi 6.18 | built by the `armbian-btf-kernel-build` workflow (stock `current` lacks `CONFIG_NET_CLS_BPF`) | untested |
 | Orange Pi R1 Plus | arm64 | Armbian `legacy` rockchip64 | not currently published; build with the `armbian-btf-kernel-build` workflow | worked previously |
 | x86_64 VM | amd64 | distribution kernel | most already have BTF | for testing |
 
-Tested with the Ubuntu Noble based Armbian images (24.04 / 24.08), available
+Tested with the Ubuntu Noble based Armbian images (24.04 / 24.08) on the 6.1 kernel, available
 from the [Armbian download page](https://www.armbian.com/download/?tx_maker=xunlong).
 
 ## 1. Image and kernel
