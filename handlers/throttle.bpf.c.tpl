@@ -1,28 +1,13 @@
+// Only kernel UAPI + libbpf headers: libc headers (sys/socket.h via linux/if.h)
+// break compilation on hosts without the 32-bit glibc stubs
+// TODO confirm against orange pi hosts!
 #include <linux/bpf.h>
-#include <arpa/inet.h>
 #include <linux/pkt_cls.h>
-#include <stdint.h>
-#include <iproute2/bpf_elf.h>
-
-#include <stdint.h>
-#include <stdbool.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <asm/types.h>
-#include <linux/in.h>
-#include <linux/if.h>
 #include <linux/if_ether.h>
 #include <linux/ip.h>
-#include <linux/ipv6.h>
-#include <linux/if_tunnel.h>
-#include <linux/filter.h>
-#include <linux/bpf.h>
-#include <linux/icmp.h>
-
 
 #include <bpf/bpf_endian.h>
 #include <bpf/bpf_helpers.h>
-#include <bpf/bpf_tracing.h>
 
 #define IP_ADDRESS(o1, o2, o3, o4) (unsigned int)(o1 + (o2 << 8) + (o3 << 16) + (o4 << 24))
 #define MILLIS 1000*1000

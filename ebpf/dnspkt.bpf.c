@@ -1,6 +1,5 @@
 #include <stdbool.h>
 #include <stdint.h>
-#include <stdlib.h>
 
 #include <linux/bpf.h>
 #include <linux/bpf_common.h>

@@ -1,0 +1,35 @@
+name: test
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  unit:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: make test
+
+  bpf:
+    # BPF_PROG_TEST_RUN on the runner's own kernel, then on the target's kernel series in a VM
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: sudo apt-get update && sudo apt-get install -y clang libbpf-dev qemu-system-x86 virtme-ng
+      - name: BPF tests on runner kernel
+        run: go test -exec "sudo -E env PATH=$PATH" ./handlers -run BPF -v
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: BPF tests on kernel v6.6.40 (virtme-ng)
+        run: make test-vm KERNEL=v6.6.40

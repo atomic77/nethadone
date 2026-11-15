@@ -12,11 +12,23 @@ etc.) while avoiding the downsides of excessive use.
 
 ## Getting Started
 
-Nethadone is in active development and has been tested on the following devices:
+Nethadone is in active development. Devices tested so far:
 
-* [Orange Pi R1 Plus](http://www.orangepi.org/html/hardWare/computerAndMicrocontrollers/details/orange-pi-R1-Plus.html)
-* [Orange Pi R1](http://www.orangepi.org/html/hardWare/computerAndMicrocontrollers/details/Orange-Pi-R1.html)
-* [Orange Pi Zero](http://www.orangepi.org/html/hardWare/computerAndMicrocontrollers/details/Orange-Pi-Zero-LTS.html)
+| Device | Arch | Setup | Notes |
+|---|---|---|---|
+| [Orange Pi R1](http://www.orangepi.org/html/hardWare/computerAndMicrocontrollers/details/Orange-Pi-R1.html) | armv7 | wired or wifi hotspot | BTF kernel required |
+| [Orange Pi Zero](http://www.orangepi.org/html/hardWare/computerAndMicrocontrollers/details/Orange-Pi-Zero-LTS.html) | armv7 | wifi hotspot | BTF kernel required |
+| [Orange Pi R1 Plus](http://www.orangepi.org/html/hardWare/computerAndMicrocontrollers/details/orange-pi-R1-Plus.html) | arm64 | wired (2 ethernet ports) |  |
+| Orange Pi Zero2  | arm64 | — | wifi hotspot currently does not work, see below |
+| Orange Pi 3 LTS | arm64 | — | wifi hotspot currently does not work, see below |
+
+Testing and support for Raspberry Pi and other boards to come.
+
+> [!WARNING]
+> Unfortunately, despite having great hardware specs for this use case, the Orange Pi Zero2 and Pi 3 LTS, 
+> and likely other boards with the Unisoc **UWE5622** wifi chip, have no reliable access point mode due to apparent firmware limitations,
+> making them unsuitable out of the box. If you already have one of these boards and want to use it for nethadone, you will likely need
+> to get a USB Wifi dongle.
 
 Please check out [doc/install.md](doc/install.md) for more details.
 

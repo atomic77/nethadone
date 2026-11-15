@@ -18,6 +18,7 @@ usage() {
     echo "    -i <img>   Armbian base image file to write into (uncompressed)"
     echo "    -m <mnt>   Mount location to use for chroot "
     echo "    -a <arch>   'aarch64' for orangepi R1+ and similar, 'arm' for opizero/r1, and similar"
+    echo "                (selects /usr/bin/qemu-<arch>-static; run from the scripts/ folder)"
     exit 1
 }
 
@@ -84,14 +85,15 @@ sudo mkdir ${mnt}/tmp/overlay
 
 # To enter into chroot w/ arm64 emulation
 sudo cp /usr/bin/qemu-${arch}-static ${mnt}/usr/bin/
-sudo cp customize-image.sh ${mnt}/tmp/
+sudo cp customize-image.sh install.sh nethadone.service ${mnt}/tmp/
 
 # Ubuntu Noble images have a symlink to /run/systemd/resolve/stub-resolv.conf which 
 # breaks DNS when in chroot. Swap out the current users' resolv.conf so we can 
 # install packages while in chroot
 sudo mv ${mnt}/etc/resolv.conf ${mnt}/etc/resolv.conf.tmp
 sudo cp -L /etc/resolv.conf ${mnt}/etc/
-sudo chmod +x ${mnt}/tmp/customize-image.sh
+sudo chmod +x ${mnt}/tmp/customize-image.sh ${mnt}/tmp/install.sh
 sudo chroot ${mnt} qemu-${arch}-static /bin/bash -c "/tmp/customize-image.sh"
 
 sudo mv -f ${mnt}/etc/resolv.conf.tmp ${mnt}/etc/resolv.conf
+sudo rm -f ${mnt}/tmp/customize-image.sh ${mnt}/tmp/install.sh ${mnt}/tmp/nethadone.service

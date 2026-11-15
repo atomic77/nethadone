@@ -6,15 +6,8 @@ import (
 
 	"github.com/alecthomas/repr"
 	"github.com/atomic77/nethadone/config"
-	tc "github.com/florianl/go-tc"
-	"github.com/florianl/go-tc/core"
 	"github.com/vishvananda/netlink"
-	"golang.org/x/sys/unix"
 )
-
-func uint64ptr(v uint64) *uint64 {
-	return &v
-}
 
 const MBit = 1000 * 1000
 const KBit = 1000
@@ -94,7 +87,7 @@ func createQdiscs() {
 func recreateBpfQdisc(iface *net.Interface) {
 	// Deleting the clsact qdisc on startup ensures that any child filters, ebpf progs are cleaned up
 	bpfQdisc := &netlink.Clsact{
-		netlink.QdiscAttrs{LinkIndex: iface.Index, Handle: netlink.MakeHandle(0xffff, 0), Parent: netlink.HANDLE_CLSACT},
+		QdiscAttrs: netlink.QdiscAttrs{LinkIndex: iface.Index, Handle: netlink.MakeHandle(0xffff, 0), Parent: netlink.HANDLE_CLSACT},
 	}
 
 	netlink.QdiscDel(
@@ -127,10 +120,9 @@ func generateQdiscLeafNodes(iface *net.Interface) []leafConfig {
 
 	for i := 1; i <= config.Cfg.NumQdiscClasses; i++ {
 
-		factor := float64(i) / float64(config.Cfg.NumQdiscClasses)
-		scaledRate := (1-factor)*float64((config.Cfg.StartRateKbs-config.Cfg.MinRateKbs)) + float64(config.Cfg.MinRateKbs)
-		scaledRate *= KBit
-		scaledDelay := factor * float64(config.Cfg.MaxDelayMs) * Ms
+		rateKbs, delayMs := leafRate(i)
+		scaledRate := rateKbs * KBit
+		scaledDelay := delayMs * Ms
 		lc := leafConfig{
 			Rate:     uint64(scaledRate),
 			Ceil:     uint64(scaledRate),
@@ -146,11 +138,24 @@ func generateQdiscLeafNodes(iface *net.Interface) []leafConfig {
 	return leaves
 }
 
+// leafRate is the rate (kbit/s) and added delay (ms) of scaled leaf i, 1 <= i <= NumQdiscClasses.
+func leafRate(i int) (rateKbs, delayMs float64) {
+	factor := float64(i) / float64(config.Cfg.NumQdiscClasses)
+	return (1-factor)*float64(config.Cfg.StartRateKbs-config.Cfg.MinRateKbs) + float64(config.Cfg.MinRateKbs),
+		factor * float64(config.Cfg.MaxDelayMs)
+}
+
+// leafHandle is the tc minor of leaf class idx; it must equal the 0x{{ .ClassId }}
+// the throttler emits for policy class (idx+1)*10.
+func leafHandle(idx int) uint16 {
+	return uint16(idx+1) * 16
+}
+
 func createLeafQdiscs(leaves *[]leafConfig) {
 
 	for idx, leaf := range *leaves {
 		log.Println(repr.String(leaf))
-		handleId := (uint16)(idx+1) * 16
+		handleId := leafHandle(idx)
 		cls := netlink.NewHtbClass(
 			netlink.ClassAttrs{LinkIndex: leaf.Iface, Handle: netlink.MakeHandle(1, handleId), Parent: netlink.MakeHandle(1, 1)},
 			netlink.HtbClassAttrs{Rate: leaf.Rate, Ceil: leaf.Rate},
@@ -176,29 +181,6 @@ func createLeafQdiscs(leaves *[]leafConfig) {
 
 		if err != nil {
 			log.Fatal("couldn't add leaf qdisc for ", repr.String(leaf), ":", err)
-		}
-	}
-}
-
-func attachQdiscToIface(tcnl *tc.Tc, iface *net.Interface) {
-
-	qdisc := tc.Object{
-		Msg: tc.Msg{
-			Family:  unix.AF_UNSPEC,
-			Ifindex: uint32(iface.Index),
-			Handle:  core.BuildHandle(tc.HandleRoot, 0x0000),
-			Parent:  tc.HandleMinEgress,
-			Info:    0,
-		},
-		Attribute: tc.Attribute{
-			Kind: "clsact",
-		},
-	}
-
-	if err := tcnl.Qdisc().Add(&qdisc); err != nil {
-		log.Println("couldn't add qdisc ", err)
-		if err := tcnl.Qdisc().Replace(&qdisc); err != nil {
-			log.Fatal("couldn't replace qdisc ", err)
 		}
 	}
 }

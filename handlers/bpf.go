@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"fmt"
+	"io"
 	"log"
 	"net"
 	"os"
@@ -18,7 +20,6 @@ import (
 	"github.com/miekg/dns"
 	"golang.org/x/sys/unix"
 
-	// "github.com/vishvananda/netlink"
 	"github.com/mdlayher/netlink"
 )
 
@@ -88,47 +89,67 @@ func Initialize() {
 }
 
 func ApplyPolicies(ipPolicies *[]models.IpPolicy) {
-	targFile, err := os.CreateTemp("", "throttle-*.bpf.c")
+	objs, err := buildThrottler(ipPolicies)
 	if err != nil {
-		log.Fatal("could not create throttler file: ", err)
+		log.Fatal(err)
 	}
-	objFile, err := os.CreateTemp("", "throttle-*.o")
-	if err != nil {
-		log.Fatal("could not create throttler object file: ", err)
-	}
-
-	rebuildBpf("throttle.bpf.c.tpl", targFile, objFile, ipPolicies)
-	reattachThrottler(objFile, config.Cfg.LanInterface, tc.HandleMinEgress)
-	os.Remove(targFile.Name())
-	os.Remove(objFile.Name())
+	reattachThrottler(objs, config.Cfg.LanInterface, tc.HandleMinEgress)
 }
 
-func rebuildBpf(tplfile string, target *os.File, objFile *os.File, ipPolicies *[]models.IpPolicy) {
-	log.Println("Rebuilding with ", len(*ipPolicies), " throttle targets from policy database")
-	tpl := template.Must(template.ParseFS(EmbedThrottlerCode, tplfile))
-	type fdata struct {
-		IpPolicies *[]models.IpPolicy
-	}
-
-	log.Println("Temporary file ", target.Name())
-	err := tpl.Execute(target, fdata{IpPolicies: ipPolicies})
+// buildThrottler renders the throttler for ipPolicies, compiles it with clang
+// and loads it into the kernel (running the verifier) without attaching it.
+func buildThrottler(ipPolicies *[]models.IpPolicy) (*throttleObjects, error) {
+	targFile, err := os.CreateTemp("", "throttle-*.bpf.c")
 	if err != nil {
-		log.Fatal("failed to render file ", err)
+		return nil, fmt.Errorf("could not create throttler file: %w", err)
+	}
+	defer os.Remove(targFile.Name())
+	objFile, err := os.CreateTemp("", "throttle-*.o")
+	if err != nil {
+		return nil, fmt.Errorf("could not create throttler object file: %w", err)
+	}
+	defer os.Remove(objFile.Name())
+
+	if err := rebuildBpf("throttle.bpf.c.tpl", targFile, objFile, ipPolicies); err != nil {
+		return nil, err
+	}
+	spec, err := ebpf.LoadCollectionSpec(objFile.Name())
+	if err != nil {
+		return nil, fmt.Errorf("failed to load throttler spec: %w", err)
+	}
+	objs := &throttleObjects{}
+	if err := spec.LoadAndAssign(objs, nil); err != nil {
+		return nil, fmt.Errorf("verifier rejected throttler: %w", err)
+	}
+	return objs, nil
+}
+
+func renderThrottler(w io.Writer, tplfile string, ipPolicies *[]models.IpPolicy) error {
+	tpl := template.Must(template.ParseFS(EmbedThrottlerCode, tplfile))
+	return tpl.Execute(w, struct{ IpPolicies *[]models.IpPolicy }{ipPolicies})
+}
+
+func rebuildBpf(tplfile string, target *os.File, objFile *os.File, ipPolicies *[]models.IpPolicy) error {
+	log.Println("Rebuilding with ", len(*ipPolicies), " throttle targets from policy database")
+	log.Println("Temporary file ", target.Name())
+	if err := renderThrottler(target, tplfile, ipPolicies); err != nil {
+		return fmt.Errorf("failed to render throttler: %w", err)
 	}
 	// FIXME There surely must be a better way of doing this dynamically
 	cmd := exec.Command(
 		"clang", "-g", "-O2",
-		// Include both armv7 and aarch64 include folders
-		"-I/usr/include/aarch64-linux-gnu", "-I/usr/arm-linux-gnueabi/include",
+		// asm/ UAPI headers live in the multiarch folder: aarch64, armv7 (native armhf or the
+		// armel cross package), plus x86_64 for dev machines
+		"-I/usr/include/aarch64-linux-gnu", "-I/usr/include/arm-linux-gnueabihf", "-I/usr/arm-linux-gnueabi/include", "-I/usr/include/x86_64-linux-gnu",
 		"-Wall", "-target", "bpf", "-c", target.Name(), "-o", objFile.Name(),
 	)
 	cmd.Dir = os.TempDir()
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		log.Fatal("failed to rebuild throttler eBPF, out: ", string(out), " err: ", err)
+		return fmt.Errorf("failed to compile throttler eBPF: %w\n%s", err, out)
 	}
 	log.Println("Compilation output: ", string(out))
-
+	return nil
 }
 
 func cleanupThrottler(iface *net.Interface) {
@@ -157,7 +178,7 @@ func cleanupThrottler(iface *net.Interface) {
 
 }
 
-func reattachThrottler(objFile *os.File, ifname string, direction uint32) {
+func reattachThrottler(objs *throttleObjects, ifname string, direction uint32) {
 
 	log.Println("(Re)attaching throttler BPF to if ", ifname, " direction ", direction)
 
@@ -168,16 +189,7 @@ func reattachThrottler(objFile *os.File, ifname string, direction uint32) {
 	}
 
 	cleanupThrottler(iface)
-
-	BpfCtx.ThrottleObjs = &throttleObjects{}
-	spec, err := ebpf.LoadCollectionSpec(objFile.Name())
-	if err != nil {
-		log.Fatal("failed to load spec ", err)
-	}
-
-	if err = spec.LoadAndAssign(BpfCtx.ThrottleObjs, nil); err != nil {
-		log.Fatal("failed to load and assign prog spec", err)
-	}
+	BpfCtx.ThrottleObjs = objs
 
 	fd := uint32(BpfCtx.ThrottleObjs.Prog.FD())
 	flags := uint32(0x1)
@@ -211,42 +223,6 @@ func reattachThrottler(objFile *os.File, ifname string, direction uint32) {
 	}
 }
 
-/*
-	func CompileBpf(tplfile string, target string, ips *[]models.IpPolicy) {
-		// Used for dynamic recompilation of tcfilt bpf program that will be
-		// continuously rendered based on the template and recompiled.
-		// It seems that this can't easily be done with bpf2go since the binary code
-		// gets compiled into the binary
-		// DNS packet sniffing BPF program that is static has been moved to bpf2go already
-
-		cfile := "/tmp/mybpfprog.c"
-		f, err := os.Create(cfile)
-		if err != nil {
-			log.Fatal("failed to create rendered file ", err)
-		}
-		tpl := template.Must(template.ParseFiles(tplfile))
-		type fdata struct {
-			IpPolicies *[]models.IpPolicy
-		}
-		err = tpl.Execute(f, fdata{IpPolicies: ips})
-		if err != nil {
-			log.Fatal("failed to render file ", err)
-		}
-
-		out, err := exec.Command(
-			// "su", "atomic", "-c",
-			// "clang", "-g", "-O2", "-I/usr/include/aarch64-linux-gnu", "-Wall", "-target", "bpf",
-			// "-c", file, "-o", target,
-			// `clang -g -O2 -I/usr/include/aarch64-linux-gnu -Wall -target bpf -c ` + cfile + " -o " + target,
-			"clang", "-g", "-O2", "-I/usr/include/aarch64-linux-gnu", "-Wall", "-target", "bpf",
-			"-c", cfile, "-o", target,
-		).CombinedOutput()
-		if err != nil {
-			log.Fatal("failed to compile ebpf prog, out: ", string(out), " err: ", err)
-		}
-		log.Println("Compilation output: ", string(out))
-	}
-*/
 func attachTrafficMonitor(ifname string, direction uint32) {
 
 	log.Println("Attaching bandwidth monitor BPF to if ", ifname, " direction ", direction)
@@ -332,21 +308,21 @@ func pollDnsResponses() {
 			log.Fatalln("failure on event read", err)
 		}
 
-		msg := new(dns.Msg)
-		if err := msg.Unpack(event.RawSample); err != nil {
-			log.Println("Error decoding DNS record:", err)
-		}
-		// TODO Investigate how to better control logging verbosity levels
-		// log.Println("Captured DNS packet ", msg.Question, msg.Answer)
+		handleDnsPacket(event.RawSample)
+	}
+}
 
-		for _, resp := range msg.Answer {
-			a, ok := resp.(*dns.A)
-			if ok {
-				err = database.AddDns(a.Header().Name, &a.A)
-				// log.Println("DNS A response:", a.Header().Name, a.A.String())
-				if err != nil {
-					log.Println("failed to write to dns db", err)
-				}
+// handleDnsPacket stores the A records of a DNS payload captured by dnspkt.bpf.c
+func handleDnsPacket(raw []byte) {
+	msg := new(dns.Msg)
+	if err := msg.Unpack(raw); err != nil {
+		log.Println("Error decoding DNS record:", err)
+	}
+	for _, resp := range msg.Answer {
+		a, ok := resp.(*dns.A)
+		if ok {
+			if err := database.AddDns(a.Header().Name, &a.A); err != nil {
+				log.Println("failed to write to dns db", err)
 			}
 		}
 	}
@@ -361,13 +337,6 @@ func getTcnl() *tc.Tc {
 	if err != nil {
 		log.Fatal("Failed to get tc handle", err)
 	}
-	// Need to defer this to shutdown or another more appropriate time
-	// defer func() {
-	// 	log.Println("Cleaning up tcnl")
-	// 	if err := tcnl.Close(); err != nil {
-	// 		log.Printf("could not close rtnetlink socket: %v\n", err)
-	// 	}
-	// }()
 
 	err = tcnl.SetOption(netlink.ExtendedAcknowledge, true)
 	if err != nil {

@@ -8,14 +8,7 @@ import (
 	"github.com/atomic77/nethadone/database"
 	"github.com/atomic77/nethadone/handlers"
 	"github.com/atomic77/nethadone/models"
-	mapset "github.com/deckarep/golang-set/v2"
-	"github.com/prometheus/common/model"
 )
-
-type srcGlob struct {
-	src  model.LabelValue
-	glob model.LabelValue
-}
 
 func InitPolicy() {
 
@@ -23,32 +16,35 @@ func InitPolicy() {
 	go pollPolicyCheck()
 }
 
-func createSrcGlobSet(vec model.Vector) mapset.Set[srcGlob] {
-	s := mapset.NewSet[srcGlob]()
-
-	for _, v := range vec {
-		sg := srcGlob{
-			src:  v.Metric["src_ip"],
-			glob: v.Metric["glob"],
+// intersect returns the entries of a that are also in every one of rest.
+// GetSrcGlobUsage results come from map keys, so a has no duplicates.
+func intersect(a []database.SrcGlob, rest ...[]database.SrcGlob) []database.SrcGlob {
+	for _, b := range rest {
+		in := make(map[database.SrcGlob]bool, len(b))
+		for _, sg := range b {
+			in[sg] = true
 		}
-		s.Add(sg)
+		var out []database.SrcGlob
+		for _, sg := range a {
+			if in[sg] {
+				out = append(out, sg)
+			}
+		}
+		a = out
 	}
-
-	return s
+	return a
 }
 
-func getActiveGlobGroups() mapset.Set[srcGlob] {
-	// Anything we get in s is a client that has exceeded the
+func getActiveGlobGroups() []database.SrcGlob {
+	// Anything returned is a client that has exceeded the
 	// policy for a given glob group
 
-	k := config.Cfg.ActivityThresholdBytes
-	s1 := createSrcGlobSet(database.GetSrcGlobUsage(2, 0, k, true))
-	s2 := createSrcGlobSet(database.GetSrcGlobUsage(2, 5, k, true))
-	s3 := createSrcGlobSet(database.GetSrcGlobUsage(5, 0, k, true))
-
-	s12 := s1.Intersect(s2)
-	s := s3.Intersect(s12)
-	return s
+	k, u := config.Cfg.ActivityThresholdBytes, config.Cfg.PolicyTimeUnit
+	return intersect(
+		database.GetSrcGlobUsage(2*u, 0, k, true),
+		database.GetSrcGlobUsage(2*u, 5*u, k, true),
+		database.GetSrcGlobUsage(5*u, 0, k, true),
+	)
 }
 
 // See README "Increasing throttling" section for policy details
@@ -57,10 +53,9 @@ func increaseThrottling() bool {
 	changed := false
 	s := getActiveGlobGroups()
 
-	log.Println("Found ", s.Cardinality(), " globs for throttling")
-	for _, match := range s.ToSlice() {
-		src_ip := string(match.src)
-		glob := string(match.glob)
+	log.Println("Found ", len(s), " globs for throttling")
+	for _, match := range s {
+		src_ip, glob := match.Src, match.Glob
 		p := database.GetPolicy(src_ip, glob)
 
 		if p == nil {
@@ -74,15 +69,18 @@ func increaseThrottling() bool {
 			continue
 		}
 
-		backOff := time.Now().Add(config.Cfg.PolicyBackoffInterval)
+		backOff := time.Now().Add(-config.Cfg.PolicyBackoffInterval)
 		if p.Tstamp.After(backOff) {
 			log.Println("too soon to update policy for ", src_ip, glob)
 		} else if p.Class > config.Cfg.NumQdiscClasses*10 {
 			log.Println("already hit maximum policy for ", src_ip, glob)
 		} else {
 			log.Println("increasing throttling policy for ", src_ip, glob)
-			database.UpdatePolicy(src_ip, glob, p.Class+10)
-			changed = true
+			if err := database.UpdatePolicy(src_ip, glob, p.Class+10); err != nil {
+				log.Println("could not update policy: ", err)
+			} else {
+				changed = true
+			}
 		}
 	}
 	return changed
@@ -91,14 +89,13 @@ func increaseThrottling() bool {
 func decreasingThrottling() bool {
 
 	changed := false
-	k := config.Cfg.ActivityThresholdBytes
+	k, u := config.Cfg.ActivityThresholdBytes, config.Cfg.PolicyTimeUnit
 
-	s := createSrcGlobSet(database.GetSrcGlobUsage(5, 0, k, false))
+	s := database.GetSrcGlobUsage(5*u, 0, k, false)
 
-	log.Println(s.Cardinality(), " globs that can be decreased")
-	for _, match := range s.ToSlice() {
-		src_ip := string(match.src)
-		glob := string(match.glob)
+	log.Println(len(s), " globs that can be decreased")
+	for _, match := range s {
+		src_ip, glob := match.Src, match.Glob
 		p := database.GetPolicy(src_ip, glob)
 
 		if p == nil {
@@ -107,9 +104,7 @@ func decreasingThrottling() bool {
 			continue
 		}
 
-		// After testing set this back to 5 or some more sensible default
-		// from configuration
-		backOff := time.Now().Add(config.Cfg.PolicyBackoffInterval)
+		backOff := time.Now().Add(-config.Cfg.PolicyBackoffInterval)
 		if p.Tstamp.After(backOff) {
 			log.Println("too soon to update policy for ", src_ip, glob)
 		} else if p.Class <= 10 {
@@ -129,27 +124,34 @@ func pollPolicyCheck() {
 	log.Println("Setting up policy checker on ", config.Cfg.PolicyCheckInterval, " interval ")
 	for range time.Tick(config.Cfg.PolicyCheckInterval) {
 		log.Println("Checking policy ")
-		changed := increaseThrottling()
-		changed = changed || decreasingThrottling()
-		if changed {
-			applyPolicies()
-		}
+		checkPolicies()
 	}
 }
+
+func checkPolicies() {
+	increased := increaseThrottling()
+	decreased := decreasingThrottling()
+	if increased || decreased {
+		applyPolicies()
+	}
+}
+
+// applyToKernel is a variable so tests can capture policies instead of compiling BPF.
+var applyToKernel = handlers.ApplyPolicies
 
 func applyPolicies() {
 	log.Println("Reapplying policy")
 	policies := database.GetAllPolicies()
+	if policies == nil {
+		return
+	}
 	allPolicies := make([]models.IpPolicy, 0)
 	for _, p := range *policies {
 		ipPolicies := database.GetIpPolicies(&p)
-		for _, ip := range *ipPolicies {
-			allPolicies = append(allPolicies, ip)
+		if ipPolicies != nil {
+			allPolicies = append(allPolicies, *ipPolicies...)
 		}
-		// This isn't compiling for some reason though the static checker is complaining about the loop above
-		// and providing this suggestion (?)
-		// allPolicies = append(allPolicies, *ipPolicies)
 	}
-	handlers.ApplyPolicies(&allPolicies)
+	applyToKernel(&allPolicies)
 
 }

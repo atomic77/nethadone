@@ -1,0 +1,186 @@
+package views
+
+import (
+	"strconv"
+	"strings"
+
+	"github.com/atomic77/nethadone/models"
+)
+
+var navLinks = []struct{ Href, Name string }{
+	{"/", "Status"},
+	{"/policies", "Policies"},
+	{"/globs", "Globs"},
+	{"/bandwidth", "Bandwidth"},
+}
+
+// hx-boost turns links and forms into ajax body swaps, so navigation keeps the page loaded.
+templ layout(title, path string) {
+	<!DOCTYPE html>
+	<html lang="en">
+		<head>
+			<meta charset="utf-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<meta name="htmx-config" content={ htmxConfig }/>
+			<title>{ title } · Nethadone</title>
+			<link rel="icon" href="/static/laptop.svg"/>
+			<link rel="stylesheet" href="/static/pico.min.css"/>
+			<script src="/static/htmx.min.js"></script>
+		</head>
+		<body hx-boost="true">
+			<header class="container">
+				<nav>
+					<ul><li><strong>Nethadone</strong></li></ul>
+					<ul>
+						for _, l := range navLinks {
+							<li>
+								<a href={ templ.SafeURL(l.Href) } if l.Href == path {
+									aria-current="page"
+								}>{ l.Name }</a>
+							</li>
+						}
+					</ul>
+				</nav>
+			</header>
+			<main class="container">
+				{ children... }
+			</main>
+		</body>
+	</html>
+}
+
+templ Status(lan, wan string, nGlobs, nPolicies int, ifaces []models.Iface) {
+	@layout("Status", "/") {
+		<h2>Status</h2>
+		<div class="grid">
+			<article><header>LAN</header><strong>{ lan }</strong></article>
+			<article><header>WAN</header><strong>{ wan }</strong></article>
+			<article><header>Glob groups</header><a href="/globs"><strong>{ strconv.Itoa(nGlobs) }</strong></a></article>
+			<article><header>Throttling policies</header><a href="/policies"><strong>{ strconv.Itoa(nPolicies) }</strong></a></article>
+		</div>
+		<h3>Interfaces</h3>
+		<div class="overflow-auto">
+			<table class="striped">
+				<thead><tr><th>Name</th><th>State</th><th>Addresses</th></tr></thead>
+				<tbody>
+					for _, i := range ifaces {
+						<tr>
+							<td>{ i.Name }</td>
+							<td>
+								if i.Up {
+									up
+								} else {
+									<mark>down</mark>
+								}
+							</td>
+							<td>{ strings.Join(i.Addrs, ", ") }</td>
+						</tr>
+					}
+				</tbody>
+			</table>
+		</div>
+	}
+}
+
+// classLabel describes a bandwidth class, e.g. "250 kbit/s, +20 ms".
+templ Policies(policies []models.Policy, classLabel func(int) string) {
+	@layout("Policies", "/policies") {
+		<hgroup>
+			<h2>Throttling policies</h2>
+			<p>One per (device, glob group) currently being slowed down. Refreshes every 10 seconds.</p>
+		</hgroup>
+		<div id="policies" class="overflow-auto" hx-get="/policies" hx-trigger="every 10s" hx-select="#policies" hx-swap="outerHTML">
+			<table class="striped">
+				<thead><tr><th>Device IP</th><th>Glob group</th><th>Class</th><th>Bandwidth</th><th>Since (UTC)</th></tr></thead>
+				<tbody>
+					for _, p := range policies {
+						<tr>
+							<td>{ p.SrcIp }</td>
+							<td>{ p.GlobGroup }</td>
+							<td>{ strconv.Itoa(p.Class) }</td>
+							<td>{ classLabel(p.Class) }</td>
+							<td>{ p.Tstamp.Format("2006-01-02 15:04:05") }</td>
+						</tr>
+					}
+					if len(policies) == 0 {
+						<tr><td colspan="5">Nothing is being throttled right now.</td></tr>
+					}
+				</tbody>
+			</table>
+		</div>
+	}
+}
+
+templ Globs(globs []models.GlobGroup, form models.GlobGroup, errMsg string) {
+	@layout("Globs", "/globs") {
+		<hgroup>
+			<h2>Glob groups</h2>
+			<p>Wildcard patterns matched against domains seen in DNS answers, e.g. <code>*.reddit.com</code>. Traffic to matching sites is throttled when used heavily.</p>
+		</hgroup>
+		<div class="overflow-auto">
+			<table class="striped">
+				<thead><tr><th>Name</th><th>Glob</th><th>Description</th><th></th></tr></thead>
+				<tbody>
+					for _, g := range globs {
+						<tr>
+							<td>{ g.Name }</td>
+							<td><code>{ g.Glob }</code></td>
+							<td>{ g.Description }</td>
+							<td>
+								<form method="post" action="/globs/delete" hx-confirm={ "Delete glob group " + g.Name + "?" } style="margin:0">
+									<input type="hidden" name="name" value={ g.Name }/>
+									<button type="submit" class="secondary outline" style="margin:0">Delete</button>
+								</form>
+							</td>
+						</tr>
+					}
+					if len(globs) == 0 {
+						<tr><td colspan="4">No glob groups yet. Add one below.</td></tr>
+					}
+				</tbody>
+			</table>
+		</div>
+		<article>
+			<header>Add a glob group</header>
+			<form method="post" action="/globs">
+				if errMsg != "" {
+					<p role="alert"><mark>{ errMsg }</mark></p>
+				}
+				<div class="grid">
+					<label>Name <input name="name" required value={ form.Name }/></label>
+					<label>Glob <input name="glob" required placeholder="*.instagram.com" value={ form.Glob }/></label>
+					<label>Description <input name="description" value={ form.Description }/></label>
+				</div>
+				<button type="submit">Add</button>
+			</form>
+		</article>
+	}
+}
+
+templ Bandwidth(rows []models.Bandwidth) {
+	@layout("Bandwidth", "/bandwidth") {
+		<hgroup>
+			<h2>Data usage</h2>
+			<p>Bytes each device has downloaded from each remote IP, largest first. Refreshes every 30 seconds.</p>
+		</hgroup>
+		<div id="bandwidth" class="overflow-auto" hx-get="/bandwidth" hx-trigger="every 30s" hx-select="#bandwidth" hx-swap="outerHTML">
+			<table class="striped">
+				<thead><tr><th>Device IP</th><th>Remote IP</th><th>Likely domain</th><th>Glob group</th><th>Received</th></tr></thead>
+				<tbody>
+					for _, b := range rows {
+						<tr>
+							<td>{ b.SrcIpAddr.String() }</td>
+							<td>{ b.DestIpAddr.String() }</td>
+							<td>{ b.ProbDomain }</td>
+							<td>{ b.GlobName }</td>
+							<td>{ fmtBytes(b.Bytes) }</td>
+						</tr>
+					}
+					if len(rows) == 0 {
+						<tr><td colspan="5">No traffic seen yet.</td></tr>
+					}
+				</tbody>
+			</table>
+		</div>
+	}
+}

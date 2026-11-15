@@ -24,12 +24,20 @@ $G$ is called tentatively a "glob group" in the code but probably needs a better
 ## SimpleLoadAverage policy
 
 Inspired by the classic unix load average triplet of 1, 5 and 15 minutes, 
-aggregated traffic to all IPs matching a glob group is tracked using a 
-prometheus query like:
+aggregated traffic from each client to all IPs matching a glob group is
+tracked in memory (`database/usage.go`): every `map_collection_interval` the
+per IP pair byte counters are summed per (client, glob group), and the policy
+asks for the average rate in bytes per second over a window, optionally
+ending some minutes ago. This is the equivalent of the PromQL
 
 ```
 sum by (src_ip, glob) (rate(ip_pair_vic_bytes_total{glob!=""}[1m]))
 ```
+
+but needs no Prometheus server. Rates are only reported once enough
+history has been collected, so after a restart no policy changes happen
+for about 7 minutes. All windows below are in minutes by default; the
+`policy_time_unit` setting scales them (the test lab uses 10s).
 
 Bandwidth usage for different sites can vary, eg. video streaming will obviously consume much more than scrolling through
 mostly text-based tweets/messages. From the point of view of nethadone,
@@ -45,7 +53,7 @@ Let $k$ be a constant value in bytes that represents the rate per second
 above which activity is assumed for a glob group $G$. Based on early experimentation this has been set to 1000 but could be tuned after collecting more usage data.
 
 Let $g(G, s, t) = \sum_{d \in G} r_{dst} $, where $r_{dst}$ represents
-the $s$-minute average rate for destination ip $d$ in group $G$ at time $t$ (i.e. the prometheus query above)
+the $s$-minute average rate for destination ip $d$ in group $G$ at time $t$ (i.e. the rate described above)
 
 #### Increasing throttling
 

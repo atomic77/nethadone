@@ -1,16 +1,9 @@
 package models
 
-import "time"
-
-var schema string
-
-type DnsProbe struct {
-	Saddr  string    `db:"saddr"`
-	Daddr  string    `db:"daddr"`
-	Dport  int       `db:"dport"`
-	Domain string    `db:"domain"`
-	Tstamp time.Time `db:"tstamp"`
-}
+import (
+	"net"
+	"time"
+)
 
 type GlobGroup struct {
 	Name        string `db:"name"`
@@ -37,4 +30,20 @@ type IpPolicy struct {
 	SrcIpAddr  string
 	DestIpAddr string
 	ClassId    int // The 'integer' part, not including 0x
+}
+
+// Bandwidth is one (LAN client, remote IP) pair from the trafficmon map, for the UI.
+type Bandwidth struct {
+	SrcIpAddr  net.IP
+	DestIpAddr net.IP
+	Bytes      uint64
+	ProbDomain string
+	GlobName   string
+}
+
+// Iface is a network interface as shown on the status page.
+type Iface struct {
+	Name  string
+	Up    bool
+	Addrs []string
 }

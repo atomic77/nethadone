@@ -3,12 +3,13 @@ package database
 import (
 	"log"
 	"net"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/atomic77/nethadone/config"
 	"github.com/atomic77/nethadone/models"
 	"github.com/jmoiron/sqlx"
-	"github.com/prometheus/client_golang/api"
 	_ "modernc.org/sqlite"
 )
 
@@ -41,6 +42,12 @@ func Connect() {
 		);`,
 	}
 
+	for _, db := range []string{config.Cfg.DnsDb, config.Cfg.CfgDb} {
+		if err := os.MkdirAll(filepath.Dir(db), 0o750); err != nil {
+			log.Fatal("could not create database directory: ", err)
+		}
+	}
+
 	dnsDb, err = sqlx.Open("sqlite", config.Cfg.DnsDb+"?mode=rw&busy_timeout=1000")
 	dnsDb.DB.SetMaxOpenConns(1)
 	if err != nil {
@@ -63,12 +70,6 @@ func Connect() {
 	log.Println("Connected to cfg database")
 	for _, t := range cfgSchema {
 		cfgDb.MustExec(t)
-	}
-
-	// Local prometheus instance
-	promDb, err = api.NewClient(api.Config{Address: config.Cfg.PrometheusUrl})
-	if err != nil {
-		log.Fatalln("Could not connect to local prometheus instance")
 	}
 }
 
@@ -93,6 +94,11 @@ func AddGlob(g *models.GlobGroup) error {
 	sql := `INSERT INTO glob_group (name, description, glob, device) 
 			VALUES (:name, :description, :glob, :device)`
 	_, err := cfgDb.NamedExec(sql, g)
+	return err
+}
+
+func DeleteGlob(name string) error {
+	_, err := cfgDb.Exec("DELETE FROM glob_group WHERE name = $1", name)
 	return err
 }
 

@@ -1,127 +1,154 @@
 # Installation
 
-## Requirements
+Getting nethadone onto a board takes four steps:
 
-Nethadone has been tested on the latest Ubuntu Noble-based versions of
-Armbian (24.04 or 24.08). You can download an image for your board at
-the [Armbian download page](https://www.armbian.com/download/?tx_maker=xunlong).
+1. Flash Armbian and install a BTF-enabled kernel.
+2. Run `scripts/install.sh`, which installs the packages, binary, config and service.
+3. Choose a network topology (wifi hotspot or wired).
+4. Check the result with `sudo nethadone check`.
 
+## Supported boards
 
-## Image prep
+| Board | Arch | Kernel | BTF kernel source | Status |
+|---|---|---|---|---|
+| Orange Pi R1 / Zero | armv7 | Armbian `legacy` sunxi 6.1 | `btf-kernel` release (`kernel-legacy-sunxi-orangepi-r1.tar.gz`) | tested |
+| Orange Pi R1 / Zero | armv7 | Armbian `current` sunxi 6.18 | built by the `armbian-btf-kernel-build` workflow (stock `current` lacks `CONFIG_NET_CLS_BPF`) | untested |
+| Orange Pi R1 Plus | arm64 | Armbian `legacy` rockchip64 | not currently published; build with the `armbian-btf-kernel-build` workflow | worked previously |
+| x86_64 VM | amd64 | distribution kernel | most already have BTF | for testing |
 
-The contents of `scripts/customize-image.sh` will need to be run, 
-as root, in a fresh installation of the image you downloaded. 
-If you want to save time, you can prep using the chroot build 
-script, eg:
+Tested with the Ubuntu Noble based Armbian images (24.04 / 24.08) on the 6.1 kernel, available
+from the [Armbian download page](https://www.armbian.com/download/?tx_maker=xunlong).
 
-```bash
-cd scripts
-./build.sh -i /tmp/Armbian_community_24.8.0-trunk.554_Orangepizero_noble_current_6.6.43.img -m ~/mnt -a arm
-```
+## 1. Image and kernel
 
-`build.sh` makes liberal use of `sudo` so you may want to run this
-on a VM or cloud server with a fast link.
+`scripts/customize-image.sh` installs the BTF kernel for the board, then runs
+`install.sh --no-start`, which installs the files without touching the network. You can run it:
 
-Replace the `-i` and `-m` options with wherever you uncompressed the
-Armbian image above, and an empty folder to use for a mount point.
-The `-a` option indicates whether you are building for an arm64
-or armv7 image.
+* **on the flashed board**: `sudo scripts/customize-image.sh`, then reboot into the new kernel; or
+* **on the image before flashing**, via the chroot wrapper (it uses `sudo` a lot, so a VM is a good place for it):
 
-> [!TIP]  
->  `build.sh` is just a chroot wrapper that pre-installs everything
-required for nethadone to run. If you prefer to do the installation 
-of required packages directly on the SBC, you can copy paste from 
-`customize-image.sh` after you have flashed the stock image using 
-[Balena etcher](https://etcher.balena.io/) or whichever flashing tool you prefer.
+  ```bash
+  cd scripts
+  ./build.sh -i /tmp/Armbian_community_24.8.0-trunk.554_Orangepizero_noble_current_6.6.43.img -m ~/mnt -a arm
+  ```
 
+  `-i` is the uncompressed image, `-m` an empty folder to mount it on, and
+  `-a` is `arm` (R1/Zero) or `aarch64` (R1 Plus).
 
-At a high level, the `customize-image.sh` script:
+## 2. Install nethadone
 
-* Installs and configures compiler dependencies, bpftool and prometheus
-* Creates a systemd service for nethadone to run on boot
-* Downloads and installs a BTF-enabled kernel
-* Downloads the nethadone binary from Github
-
-
-## Nethadone post-installation
-
-The easiest way to test out Nethadone is with a board like the
-Zero or R1 that has functional wifi with Armbian. You can spin
-up a [hotspot](https://ubuntu.com/core/docs/networkmanager/configure-wifi-access-points) with `nmcli`, eg:
+On the booted board:
 
 ```bash
-sudo nmcli dev wifi hotspot ifname wlan0 ssid nethadone password $password channel 8 band bg
+git clone https://github.com/atomic77/nethadone && cd nethadone
+sudo scripts/install.sh            # plus the topology options below
 ```
 
-The network-manager hotspot conveniently sets up a LAN for you
-for any devices that connect wirelessly (default seems to be `10.42.0.0/24`), and NAT out to your wired interface, which should be plugged in
-directly to your primary router.
+or without a checkout:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/atomic77/nethadone/main/scripts/install.sh | sudo bash -s -- [options]
+```
+
+The script is safe to re-run, for example to upgrade to the latest release. It:
+
+* installs `clang`, `libbpf-dev` and `libc6-dev` (the throttler is compiled on the device) and `avahi-daemon`;
+* downloads the latest release binary to `/usr/local/bin/nethadone` (`--binary PATH` installs a local build instead);
+* enables IPv4 forwarding (`/etc/sysctl.d/20-nethadone.conf`);
+* writes `/etc/nethadone/nethadone.yml` with the detected LAN interface (an existing file is kept);
+* installs and enables `nethadone.service` (databases go in `/var/lib/nethadone`);
+* runs `nethadone check`, and starts the service only if every check passes.
+
+## 3. Network topology
+
+Nethadone routes between a **WAN** interface (towards your internet router)
+and a **LAN** interface (where your devices are). The WAN is detected as the
+interface with the default route; leave `wan_interface` empty to keep it that way.
+
+### Wifi hotspot (simplest; Orange Pi Zero / R1)
+
+```bash
+sudo scripts/install.sh --hotspot nethadone 'a-good-password'
+```
+
+This creates a NetworkManager hotspot on the wifi interface (DHCP on
+`10.42.0.0/24`, NAT out of the wired port), sets it as the LAN and makes it
+start on boot. Plug the wired port into your main router.
 
 > [!NOTE]
-> The network-manager hotspot also has the advantage of setting up DNS
-> caching automatically with `dnsmasq`. This makes it easier for 
-> nethadone to capture these packets, as clients receiving a local
-> IP as a DNS server in DHCP configuration typically do not use DNS-over-HTTPS.
+> The hotspot also runs a caching DNS server (`dnsmasq`). Clients that are
+> given a local DNS server over DHCP usually skip DNS-over-HTTPS, so nethadone
+> can see their lookups.
 
-You can drop the `nmcli` command you used into `/etc/rc.local` to have
-it start up on reboot.
+### Wired (R1 Plus, or any board with two ethernet ports)
 
-### Adjusting cofiguration
+```bash
+sudo scripts/install.sh --lan lan0 --nat
+```
 
-If you want to customize any parameters, or have different interface
-names, you can create a `/etc/nethadone.yml` file. 
-See the sample [config](../config/nethadone.yml) for more details.
-
-## Wired-only Deployment
-
-Faster devices like the OrangePi R1+, as of my last tests, do not have
-functional wifi with stock Armbian. This means they need to be introduced
-between your wifi router and your device providing internet access using
-the two ethernet ports.
-
-This provides fast, full coverage for all devices in your home, but could take down your internet in the event of an issue with nethadone.
-As this is still very much in development, it's recommended to stick
-with a secondary access point for now.
-
-If you have access to an extra wifi router, this is an example of how
-you can still make use of a wired-only device:
+`--nat` writes an nftables masquerade rule for the WAN to
+`/etc/nethadone/nat.nft`, and the service re-applies it on every start. The LAN
+interface also needs an address and a DHCP server for your devices, which
+nethadone does not provide yet; one option is a secondary access point behind
+the board:
 
 ![Secondary network](nethadone-secondary-network.drawio.png)
 
-In such as case, you will need to set up NAT for the interface
-connected to the , eg. if `eth0` is your wan interface:
+Putting the board inline between your router and everything else covers
+every device, but takes the network down if nethadone fails. While the
+project is in development, a secondary network is the safer choice.
+
+### Adjusting the configuration
+
+`/etc/nethadone/nethadone.yml` holds only the settings that differ from the
+defaults. All options are documented in the sample [config](../config/nethadone.yml).
+Unknown keys are rejected, so typos fail loudly. After editing:
 
 ```bash
-iptables -t nat -A POSTROUTING -o end0 -j MASQUERADE
+sudo nethadone check && sudo systemctl restart nethadone
 ```
 
-*TODO - properly document other steps required for this scenario*
+## 4. Check
+
+`nethadone check` verifies everything nethadone needs and changes nothing:
+
+```text
+$ sudo nethadone check
+[ OK ] running as root
+[ OK ] kernel 6.1.104 has BTF
+[ OK ] kernel has HTB, netem, prio, clsact and cls_bpf (from /proc/config.gz)
+[ OK ] throttler compiles with clang and passes the verifier
+[ OK ] WAN interface eth0 is up
+[ OK ] default route via WAN eth0
+[ OK ] LAN interface wlan0 is up
+[ OK ] IPv4 forwarding enabled
+[ OK ] NAT masquerade rule present
+```
+
+The same checks run every time the service starts, so a broken setup fails
+with a readable message in `journalctl -u nethadone` instead of a compiler error.
+
+| Failure | Fix |
+|---|---|
+| `kernel ... has no BTF` | Install the BTF kernel (step 1) and reboot into it. |
+| `kernel lacks CONFIG_NET_SCH_...` | The kernel is missing a qdisc nethadone uses; use a kernel with it enabled. |
+| `clang not found` / `throttler test compile/load failed` | `sudo apt-get install clang libbpf-dev libc6-dev`. On armv7, also `libc6-dev-armel-cross`. The message includes the clang output. |
+| `LAN/WAN interface X does not exist` | The fix line lists the interfaces that exist. Set `lan_interface`/`wan_interface`. |
+| `LAN X has no IPv4 address` | The LAN needs an address and DHCP server: use the hotspot, or configure them for the wired port. |
+| `IPv4 forwarding disabled` | Re-run `install.sh`, or apply `/etc/sysctl.d/20-nethadone.conf`. |
+| `[WARN] no NAT masquerade rule found` | Only a warning: hotspots do their own NAT. For wired setups use `--nat`. |
 
 ## Runtime logs
 
-If all goes well and nethadone is routing and inspecting traffic, 
-you should see be able to see log entries like:
+When everything works, the journal shows the metrics and policy loops running:
 
 ```bash
-$ journalctl -u nethadone.service --follow
+$ journalctl -u nethadone --follow
 ...
-2024/07/20 15:48:58 Registering prometheus metrics
 2024/07/20 15:48:58 Setting up SimpleLoadAverage policy
 2024/07/20 15:48:58 Setting up metrics collector
-2024/07/20 15:48:58 Setting up metrics collector
-
- ┌───────────────────────────────────────────────────┐
- │                   Fiber v2.52.4                   │
- │               http://127.0.0.1:3000               │
- │       (bound on host 0.0.0.0 and port 3000)       │
- │                                                   │
- │ Handlers ............ 18  Processes ........... 1 │
- │ Prefork ....... Disabled  PID ............ 185115 │
- └───────────────────────────────────────────────────┘
 2024/07/20 15:51:41 Tick happened, collected  6  pairs
-15:51:44 | 200 |     706.661µs | 127.0.0.1 | GET | /metrics | -
 2024/07/20 15:51:56 Tick happened, collected  22  pairs
-...
 2024/07/20 15:52:25 Checking policy
 2024/07/20 15:52:25 Found  0  globs for throttling
 2024/07/20 15:52:25 0  globs that can be decreased
@@ -172,8 +199,7 @@ mapped DNS to IP addresses, it will be running at:
 http://orangepi-r1.local:3000/
 
 mDNS is configured by default - if this address does not resolve
-on your network, replace `r1plus.local` with whatever IP address
-was assigned. 
+on your network, use the board's IP address instead.
 
 Example glob group configuration:
 
@@ -184,14 +210,11 @@ mapped to likely domains on the bandwidth page:
 
 ![bandwidth](bandwidth.png)
 
-The local prometheus server that is used for policy decisions
-should be available on port 9090, and you can check that metrics
-are being collected there using similar queries used by nethadone:
+Policy decisions no longer need a Prometheus server. The raw counters
+are still exported on `http://<router>:3000/metrics` if you want to
+scrape and graph them yourself.
 
-
-![prometheus](prometheus.png)
-
-## Other boards 
+## Other boards
 
 Armbian does not ship with BTF-enabled kernels out of the box at this
 time; the two kernel builds available for Armbian `BOARDFAMILY` 
@@ -203,3 +226,14 @@ but not certain to work.
 If you are interested in trying out another board and are having 
 trouble getting a BTF kernel working, please raise an issue and I'll
 try adding it to the Github Action.
+
+### Porting to a new board
+
+A board can run nethadone if `sudo nethadone check` passes. In practice that needs:
+
+* a kernel with BTF (`/sys/kernel/btf/vmlinux`), and HTB, netem, prio, clsact (`NET_SCH_INGRESS`) and cls_bpf;
+* `clang` able to compile the throttler for the BPF target with the distribution's UAPI headers;
+* two interfaces, one towards the internet and one towards your devices.
+
+Install the binary with `scripts/install.sh --binary ...` or let it download
+the release for your architecture, then run the check.

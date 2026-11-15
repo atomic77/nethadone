@@ -1,6 +1,7 @@
 package config
 
 import (
+	"io"
 	"log"
 	"os"
 	"time"
@@ -9,13 +10,13 @@ import (
 )
 
 var baseConfig = Config{
-	WanInterface: "eth0",
+	// Empty means "the interface holding the default route", resolved at startup
+	WanInterface: "",
 	LanInterface: "lan0",
 	WanMbps:      100,
 
-	CfgDb:         "/root/cfg.db",
-	DnsDb:         "/root/dns.db",
-	PrometheusUrl: "http://localhost:9090",
+	CfgDb: "/var/lib/nethadone/cfg.db",
+	DnsDb: "/var/lib/nethadone/dns.db",
 
 	MapCollectionInterval: time.Second * 30,
 	PolicyCheckInterval:   time.Minute * 1,
@@ -28,6 +29,7 @@ var baseConfig = Config{
 
 	ActivityThresholdBytes: 100,
 	PolicyBackoffInterval:  time.Minute * 3,
+	PolicyTimeUnit:         time.Minute,
 }
 
 var Cfg = baseConfig
@@ -39,9 +41,8 @@ type Config struct {
 	LanInterface string `yaml:"lan_interface"`
 
 	// Database locations
-	CfgDb         string `yaml:"cfg_db"`
-	DnsDb         string `yaml:"dns_db"`
-	PrometheusUrl string `yaml:"prometheus_url"`
+	CfgDb string `yaml:"cfg_db"`
+	DnsDb string `yaml:"dns_db"`
 
 	// Operational parameters for tuning use on SBCs with different
 	// capabilities
@@ -64,26 +65,39 @@ type Config struct {
 	// See policy/README.md for details
 
 	// Activity threshold is represented as `k` in policy readme,
-	// the number of bytes considered "active" for the prom rate
-	// queries
+	// the bytes per second over which a client counts as "active"
+	// on a glob group
 	ActivityThresholdBytes int `yaml:"activity_threshold_bytes"`
 	// How long before we'll consider a change to policy;
 	// setting this lower will cause clients to be moved up and
 	// down bandwidth classes faster
 	PolicyBackoffInterval time.Duration `yaml:"policy_backoff_interval"`
+	// Unit of the policy's rate windows (2 units now, 2 units ending 5 units
+	// ago, 5 units now). Only shorten it for testing.
+	PolicyTimeUnit time.Duration `yaml:"policy_time_unit"`
 }
 
-func ParseConfig(file string) {
+// DefaultFile is where install.sh puts the config and the systemd unit reads it.
+const DefaultFile = "/etc/nethadone/nethadone.yml"
+
+// ParseConfig loads file over the defaults. A missing file is fatal when
+// required (the user named it), otherwise nethadone proceeds with defaults.
+func ParseConfig(file string, required bool) {
 	f, err := os.Open(file)
 	if err != nil {
-		log.Println("configuration file could not be parsed; proceeding with defaults")
+		if required {
+			log.Fatalln("could not open configuration file: ", err)
+		}
+		log.Println("no configuration file at ", file, "; proceeding with defaults")
 		return
 	}
 	defer f.Close()
 
 	decoder := yaml.NewDecoder(f)
+	// Catch typos in keys instead of silently ignoring them
+	decoder.KnownFields(true)
 	err = decoder.Decode(&Cfg)
-	if err != nil {
-		log.Fatalln("failed to parse configuration file ", err)
+	if err != nil && err != io.EOF {
+		log.Fatalln("failed to parse configuration file ", file, ": ", err)
 	}
 }
