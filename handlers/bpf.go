@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"slices"
 	"text/template"
 
 	"github.com/alecthomas/repr"
@@ -297,7 +298,9 @@ func attachDnsSniffer(ifname string, direction uint32) {
 }
 
 func pollDnsResponses() {
-	reader, err := perf.NewReader(BpfCtx.DnspktObjs.DnsArr, 4096) // what is a reasonable buffer size ??
+	// Per CPU. Samples are ~512 bytes, so a single page held only ~7 answers and dropped
+	// bursts (a page load fires dozens of lookups). 32 pages holds ~250, at 128 KiB per CPU.
+	reader, err := perf.NewReader(BpfCtx.DnspktObjs.DnsArr, 32*os.Getpagesize())
 	if err != nil {
 		log.Fatalln("failed to initialize perf buffer reader ", err)
 	}
@@ -312,19 +315,35 @@ func pollDnsResponses() {
 	}
 }
 
-// handleDnsPacket stores the A records of a DNS payload captured by dnspkt.bpf.c
+// handleDnsPacket stores the A records of a DNS payload captured by dnspkt.bpf.c under
+// every name of the answer: the queried name and each CNAME in the chain, so a glob on
+// e.g. www.youtube.com still matches after youtube-ui.l.google.com resolves to the IP.
 func handleDnsPacket(raw []byte) {
 	msg := new(dns.Msg)
 	if err := msg.Unpack(raw); err != nil {
 		log.Println("Error decoding DNS record:", err)
 	}
-	for _, resp := range msg.Answer {
-		a, ok := resp.(*dns.A)
-		if ok {
-			if err := database.AddDns(a.Header().Name, &a.A); err != nil {
-				log.Println("failed to write to dns db", err)
-			}
+	// A single query's answer section holds only its chain, so every owner name belongs to it
+	names := make([]string, 0, len(msg.Answer)+1)
+	for _, q := range msg.Question {
+		names = append(names, q.Name)
+	}
+	for _, rr := range msg.Answer {
+		if n := rr.Header().Name; !slices.Contains(names, n) {
+			names = append(names, n)
 		}
+	}
+	var ips []net.IP
+	for _, rr := range msg.Answer {
+		if a, ok := rr.(*dns.A); ok {
+			ips = append(ips, a.A)
+		}
+	}
+	if len(ips) == 0 {
+		return
+	}
+	if err := database.AddDns(names, ips); err != nil {
+		log.Println("failed to write to dns db", err)
 	}
 }
 

@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -81,6 +82,41 @@ func dnsAnswer(t *testing.T, name string, ips ...string) []byte {
 	return b
 }
 
+func TestPageBounds(t *testing.T) {
+	for _, c := range []struct{ total, page, start, end, clamped, pages int }{
+		{0, 1, 0, 0, 1, 1},       // empty list still has one page
+		{250, 0, 0, 100, 1, 3},   // missing/invalid page -> first
+		{250, 3, 200, 250, 3, 3}, // short last page
+		{250, 9, 200, 250, 3, 3}, // past the end -> last
+		{200, 2, 100, 200, 2, 2}, // exact multiple
+	} {
+		s, e, p, n := pageBounds(c.total, c.page, 100)
+		if s != c.start || e != c.end || p != c.clamped || n != c.pages {
+			t.Errorf("pageBounds(%d, %d) = %d,%d,%d,%d; want %+v", c.total, c.page, s, e, p, n, c)
+		}
+	}
+}
+
+func TestBandwidthPage(t *testing.T) {
+	bl := make([]models.Bandwidth, 150)
+	for i := range bl {
+		bl[i] = models.Bandwidth{SrcIpAddr: net.IPv4(192, 168, 0, 2), DestIpAddr: net.IPv4(10, 0, byte(i/256), byte(i)), Bytes: uint64(i)}
+	}
+	setLastBandwidth(bl)
+	t.Cleanup(func() { setLastBandwidth(nil) })
+
+	rec := httptest.NewRecorder()
+	Bandwidth(rec, httptest.NewRequest("GET", "/bandwidth?page=2", nil))
+	body := rec.Body.String()
+	if !strings.Contains(body, "page 2 of 2") || !strings.Contains(body, "/bandwidth?page=1") {
+		t.Errorf("missing pagination in page 2")
+	}
+	// sorted descending, so page 2 holds the 50 smallest: 10.0.0.49 down to 10.0.0.0
+	if !strings.Contains(body, "10.0.0.49") || strings.Contains(body, "10.0.0.50<") {
+		t.Errorf("page 2 has wrong rows")
+	}
+}
+
 func TestHandleDnsPacket(t *testing.T) {
 	connectTempDb(t)
 	// dnspkt.bpf.c always submits its full 508 byte buffer, zero padded
@@ -90,12 +126,53 @@ func TestHandleDnsPacket(t *testing.T) {
 	handleDnsPacket(raw)
 
 	for _, ip := range []string{"142.250.1.1", "142.250.1.2"} {
-		// Current behaviour: A records are stored under the CNAME target, not the queried name (doc/todo.md)
-		if got := database.GetDomainForIP(ip); got != "edge.www.youtube.com." {
+		// Stored under the queried name and the CNAME target, normalised
+		got := database.GetDomainsByIP()[ip]
+		slices.Sort(got)
+		if !slices.Equal(got, []string{"edge.www.youtube.com", "www.youtube.com"}) {
 			t.Errorf("%s -> %q", ip, got)
 		}
 	}
 	handleDnsPacket([]byte{0xde, 0xad}) // garbage must not panic
+}
+
+func TestHandleDnsPacketLongChain(t *testing.T) {
+	connectTempDb(t)
+	// doc/todo.md example: media.licdn.com -> 3 CNAMEs -> A
+	m := new(dns.Msg)
+	m.SetQuestion("media.licdn.com.", dns.TypeA)
+	m.Response = true
+	chain := []string{"media.licdn.com.", "2-01-2c3e-005c.cdx.cedexis.net.", "od.linkedin.edgesuite.net.", "a1916.dscg2.akamai.net."}
+	for i := 0; i+1 < len(chain); i++ {
+		m.Answer = append(m.Answer, &dns.CNAME{Hdr: dns.RR_Header{Name: chain[i], Rrtype: dns.TypeCNAME, Class: dns.ClassINET}, Target: chain[i+1]})
+	}
+	m.Answer = append(m.Answer, &dns.A{Hdr: dns.RR_Header{Name: chain[3], Rrtype: dns.TypeA, Class: dns.ClassINET}, A: net.ParseIP("206.248.168.162")})
+	raw, err := m.Pack()
+	if err != nil {
+		t.Fatal(err)
+	}
+	handleDnsPacket(raw)
+
+	if got := database.GetDomainsByIP()["206.248.168.162"]; len(got) != 4 || !slices.Contains(got, "media.licdn.com") {
+		t.Errorf("chain stored as %q", got)
+	}
+	if ips := database.GetIPsMatchingGlob(&models.GlobGroup{Glob: "*.licdn.com"}); !slices.Equal(ips, []string{"206.248.168.162"}) {
+		t.Errorf("glob on queried name matched %v", ips)
+	}
+}
+
+func TestMatchDomains(t *testing.T) {
+	globs := []models.GlobGroup{{Name: "yt", Glob: "*youtube.com"}}
+	// newest name is the CDN one; the glob still matches the queried name
+	if dom, glob := matchDomains(globs, []string{"youtube-ui.l.google.com", "www.youtube.com"}); dom != "www.youtube.com" || glob != "yt" {
+		t.Errorf("got %q/%q", dom, glob)
+	}
+	if dom, glob := matchDomains(globs, []string{"a.example.com", "b.example.com"}); dom != "a.example.com" || glob != "" {
+		t.Errorf("no match: got %q/%q, want newest name and no glob", dom, glob)
+	}
+	if dom, glob := matchDomains(globs, nil); dom != "" || glob != "" {
+		t.Errorf("unknown IP: got %q/%q", dom, glob)
+	}
 }
 
 func TestClassLabel(t *testing.T) {

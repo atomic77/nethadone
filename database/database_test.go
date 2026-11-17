@@ -3,6 +3,7 @@ package database
 import (
 	"net"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/atomic77/nethadone/config"
@@ -22,20 +23,56 @@ func connectTemp(t testing.TB) {
 func addDns(t testing.TB, domain, ip string) {
 	t.Helper()
 	addr := net.ParseIP(ip)
-	if err := AddDns(domain, &addr); err != nil {
+	if err := AddDns([]string{domain}, []net.IP{addr}); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func TestDomainForIP(t *testing.T) {
+func TestDomainsByIP(t *testing.T) {
 	connectTemp(t)
-	addDns(t, "www.youtube.com.", "142.250.1.1")
+	dnsDb.MustExec(`INSERT INTO dns VALUES ('0.0.0.0', '142.250.1.1', 'older.youtube.com', datetime('now', '-1 hour'))`)
+	dnsDb.MustExec(`INSERT INTO dns VALUES ('0.0.0.0', '142.250.9.9', 'stale.youtube.com', datetime('now', '-10 days'))`)
+	addDns(t, "WWW.YouTube.com.", "142.250.1.1") // stored normalised
 
-	if got := GetDomainForIP("142.250.1.1"); got != "www.youtube.com." {
-		t.Errorf("GetDomainForIP = %q", got)
+	m := GetDomainsByIP()
+	if got := m["142.250.1.1"]; !slices.Equal(got, []string{"www.youtube.com", "older.youtube.com"}) {
+		t.Errorf("domains, newest first: got %q", got)
 	}
-	if got := GetDomainForIP("1.1.1.1"); got != "" {
-		t.Errorf("unknown IP: got %q, want empty", got)
+	if _, ok := m["142.250.9.9"]; ok {
+		t.Error("row outside the 5 day window returned")
+	}
+	if _, ok := m["1.1.1.1"]; ok {
+		t.Error("unknown IP returned")
+	}
+}
+
+func TestPruneDns(t *testing.T) {
+	connectTemp(t)
+	dnsDb.MustExec(`INSERT INTO dns VALUES ('0.0.0.0', '142.250.9.9', 'stale.youtube.com', datetime('now', '-10 days'))`)
+	addDns(t, "www.youtube.com", "142.250.1.1")
+	PruneDns()
+	var n int
+	dnsDb.Get(&n, `SELECT count(*) FROM dns`)
+	if n != 1 || GetDomainsByIP()["142.250.1.1"] == nil {
+		t.Errorf("after prune: %d rows, want only the recent one", n)
+	}
+}
+
+// Rows written by older versions ("Name.com.") are normalised on Connect.
+func TestConnectNormalisesOldNames(t *testing.T) {
+	connectTemp(t)
+	dnsDb.MustExec(`INSERT INTO dns VALUES ('0.0.0.0', '142.250.1.1', 'WWW.youtube.com.', datetime())`)
+	dnsDb.MustExec(`INSERT INTO dns VALUES ('0.0.0.0', '142.250.1.1', 'www.youtube.com', datetime())`) // would collide
+	cfgDb.MustExec(`INSERT INTO glob_group (name, description, glob, device) VALUES ('yt', '', '*YouTube.com.', '')`)
+	dnsDb.Close()
+	cfgDb.Close()
+	Connect()
+
+	if got := GetDomainsByIP()["142.250.1.1"]; !slices.Equal(got, []string{"www.youtube.com"}) {
+		t.Errorf("dns after migration: %q", got)
+	}
+	if g := GetGlob("yt"); g == nil || g.Glob != "*youtube.com" {
+		t.Errorf("glob after migration: %+v", g)
 	}
 }
 
@@ -46,9 +83,9 @@ func TestIPsMatchingGlob(t *testing.T) {
 	addDns(t, "www.youtube.com.", "142.250.1.1") // re-seen IP must not duplicate
 	addDns(t, "www.wikipedia.org.", "208.80.154.224")
 	// Older than the 5 day window
-	dnsDb.MustExec(`INSERT INTO dns VALUES ('0.0.0.0', '142.250.9.9', 'old.youtube.com.', datetime('now', '-10 days'))`)
+	dnsDb.MustExec(`INSERT INTO dns VALUES ('0.0.0.0', '142.250.9.9', 'old.youtube.com', datetime('now', '-10 days'))`)
 
-	ips := GetIPsMatchingGlob(&models.GlobGroup{Glob: "*.youtube.com."})
+	ips := GetIPsMatchingGlob(&models.GlobGroup{Glob: "*.youtube.com"})
 	want := map[string]bool{"142.250.1.1": true, "142.250.1.2": true}
 	if len(ips) != len(want) {
 		t.Fatalf("got %v, want keys of %v", ips, want)
@@ -104,11 +141,11 @@ func TestGetIpPolicies(t *testing.T) {
 	}
 }
 
-func BenchmarkDomainForIP(b *testing.B) {
+func BenchmarkDomainsByIP(b *testing.B) {
 	connectTemp(b)
 	addDns(b, "www.youtube.com.", "142.250.1.1")
 	for i := 0; i < b.N; i++ {
-		if GetDomainForIP("142.250.1.1") == "" {
+		if GetDomainsByIP()["142.250.1.1"] == nil {
 			b.Fatal("lookup failed")
 		}
 	}

@@ -61,6 +61,9 @@ func Connect() {
 		tstamp timestamp,
 		PRIMARY KEY (daddr, saddr, domain)
 	);`)
+	// Older versions stored names as "www.example.com."; OR REPLACE drops a row whose new form already exists
+	dnsDb.MustExec(`UPDATE OR REPLACE dns SET domain = lower(rtrim(domain, '.')) WHERE domain LIKE '%.' OR domain <> lower(domain)`)
+	PruneDns()
 
 	cfgDb, err = sqlx.Open("sqlite", config.Cfg.CfgDb+"?mode=rw&busy_timeout=1000")
 	cfgDb.DB.SetMaxOpenConns(1)
@@ -71,6 +74,7 @@ func Connect() {
 	for _, t := range cfgSchema {
 		cfgDb.MustExec(t)
 	}
+	cfgDb.MustExec(`UPDATE glob_group SET glob = lower(rtrim(glob, '.')) WHERE glob LIKE '%.' OR glob <> lower(glob)`)
 }
 
 func GetGlob(name string) *models.GlobGroup {
@@ -90,7 +94,15 @@ func GetGlobs() []models.GlobGroup {
 	return globs
 }
 
+// NormaliseName lowercases a domain name or glob and drops the trailing root dot,
+// so "*.reddit.com" matches what DNS returns as "WWW.reddit.com.".
+func NormaliseName(s string) string {
+	return strings.ToLower(strings.TrimSuffix(s, "."))
+}
+
+// AddGlob stores g with its glob normalised (g.Glob is updated in place).
 func AddGlob(g *models.GlobGroup) error {
+	g.Glob = NormaliseName(g.Glob)
 	sql := `INSERT INTO glob_group (name, description, glob, device) 
 			VALUES (:name, :description, :glob, :device)`
 	_, err := cfgDb.NamedExec(sql, g)
@@ -102,21 +114,33 @@ func DeleteGlob(name string) error {
 	return err
 }
 
-func AddDns(domain string, ipaddr *net.IP) error {
-
-	sql := `INSERT INTO dns VALUES (:saddr, :daddr, :domain, datetime())
-	ON CONFLICT (saddr, daddr, domain) 
-	DO UPDATE SET tstamp = datetime()`
-	_, err := dnsDb.NamedExec(sql, map[string]interface{}{
-		// TODO Source of the DNS request should be tracked as well
-		// to ensure shared IPs aren't filtered for clients accessing
-		// unrelated sites
-		"saddr":  "0.0.0.0",
-		"daddr":  ipaddr.String(),
-		"dport":  0,
-		"domain": domain,
-	})
-	return err
+// AddDns records every (name, ip) combination of one DNS answer in a single transaction,
+// so a CNAME chain costs one disk sync instead of one per row; the perf buffer feeding
+// handleDnsPacket overflows if each answer takes too long to store.
+func AddDns(names []string, ips []net.IP) error {
+	tx, err := dnsDb.Beginx()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback() // no-op after Commit
+	// TODO Source of the DNS request should be tracked as well
+	// to ensure shared IPs aren't filtered for clients accessing
+	// unrelated sites
+	stmt, err := tx.Preparex(`INSERT INTO dns VALUES ('0.0.0.0', $1, $2, datetime())
+	ON CONFLICT (saddr, daddr, domain)
+	DO UPDATE SET tstamp = datetime()`)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+	for _, ip := range ips {
+		for _, n := range names {
+			if _, err := stmt.Exec(ip.String(), NormaliseName(n)); err != nil {
+				return err
+			}
+		}
+	}
+	return tx.Commit()
 }
 
 func GetPolicy(src_ip string, glob_group string) *models.Policy {

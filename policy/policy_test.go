@@ -30,7 +30,7 @@ func setup(t *testing.T, active, idle []string) *[][]models.IpPolicy {
 	database.Connect()
 
 	ip := net.ParseIP(ytIP)
-	if err := database.AddDns("www.youtube.com.", &ip); err != nil {
+	if err := database.AddDns([]string{"www.youtube.com."}, []net.IP{ip}); err != nil {
 		t.Fatal(err)
 	}
 	if err := database.AddGlob(&models.GlobGroup{Name: "yt", Glob: "*.youtube.com."}); err != nil {

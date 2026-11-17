@@ -10,7 +10,9 @@ import (
 	"net/http"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/VictoriaMetrics/metrics"
 	"github.com/a-h/templ"
@@ -111,6 +113,21 @@ func getMatchingGlobGroup(globs []models.GlobGroup, dom string) *models.GlobGrou
 	return nil
 }
 
+// matchDomains picks the glob group for an IP's domains (newest first). Any name, e.g. the
+// queried name ahead of its CNAME chain, can match, as in GetIPsMatchingGlob. It returns the
+// matching name, or the newest name when no glob matches.
+func matchDomains(globs []models.GlobGroup, doms []string) (dom, glob string) {
+	for _, d := range doms {
+		if gg := getMatchingGlobGroup(globs, d); gg != nil {
+			return d, gg.Name
+		}
+	}
+	if len(doms) > 0 {
+		dom = doms[0]
+	}
+	return dom, ""
+}
+
 // decodeIpPairKey splits a trafficmon.bpf.c src_dest_bytes key into (LAN client, remote) IPs.
 // The program runs on LAN egress, so the key's low word (packet daddr) is the client.
 func decodeIpPairKey(key uint64) (net.IP, net.IP) {
@@ -120,25 +137,17 @@ func decodeIpPairKey(key uint64) (net.IP, net.IP) {
 }
 
 func getBandwidthList(globsOnly bool) []models.Bandwidth {
-	// TODO This needs to be optimized
-
 	var key, val uint64
 	vals := make([]models.Bandwidth, 0)
 	if BpfCtx.TrafficmonObjs != nil {
 		globs := database.GetGlobs()
+		domains := database.GetDomainsByIP()
 		entries := BpfCtx.TrafficmonObjs.trafficmonMaps.SrcDestBytes.Iterate()
 		for entries.Next(&key, &val) {
 			srcip, destip := decodeIpPairKey(key)
-			dom := database.GetDomainForIP(destip.String())
-			bl := models.Bandwidth{
-				SrcIpAddr:  srcip,
-				DestIpAddr: destip,
-				Bytes:      val,
-				ProbDomain: dom,
-			}
-			if gg := getMatchingGlobGroup(globs, dom); gg != nil {
-				bl.GlobName = gg.Name
-			} else if globsOnly {
+			bl := models.Bandwidth{SrcIpAddr: srcip, DestIpAddr: destip, Bytes: val}
+			bl.ProbDomain, bl.GlobName = matchDomains(globs, domains[destip.String()])
+			if globsOnly && bl.GlobName == "" {
 				continue
 			}
 			vals = append(vals, bl)
@@ -147,10 +156,39 @@ func getBandwidthList(globsOnly bool) []models.Bandwidth {
 	return vals
 }
 
-func Bandwidth(w http.ResponseWriter, r *http.Request) {
-	bl := getBandwidthList(false)
+const bandwidthPageSize = 100
+
+// lastBandwidth is pollMetrics' latest walk of the trafficmon map, sorted by bytes descending.
+// It is replaced, never mutated, so readers can keep slicing an old copy.
+var (
+	lastBandwidthMu sync.RWMutex
+	lastBandwidth   []models.Bandwidth
+)
+
+func setLastBandwidth(bl []models.Bandwidth) {
 	slices.SortFunc(bl, func(a, b models.Bandwidth) int { return cmp.Compare(b.Bytes, a.Bytes) })
-	render(w, r, views.Bandwidth(bl))
+	lastBandwidthMu.Lock()
+	lastBandwidth = bl
+	lastBandwidthMu.Unlock()
+}
+
+// pageBounds clamps the 1-based page to [1, pages] and returns the slice bounds for it.
+func pageBounds(total, page, size int) (start, end, clamped, pages int) {
+	pages = max(1, (total+size-1)/size)
+	clamped = min(max(page, 1), pages)
+	start = (clamped - 1) * size
+	end = min(start+size, total)
+	return
+}
+
+// Bandwidth serves the cached list from pollMetrics, so it can be stale by up to map_collection_interval.
+func Bandwidth(w http.ResponseWriter, r *http.Request) {
+	lastBandwidthMu.RLock()
+	bl := lastBandwidth
+	lastBandwidthMu.RUnlock()
+	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+	start, end, page, pages := pageBounds(len(bl), page, bandwidthPageSize)
+	render(w, r, views.Bandwidth(bl[start:end], page, pages, len(bl)))
 }
 
 func MetricsHandleFunc(w http.ResponseWriter, req *http.Request) {

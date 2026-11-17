@@ -19,8 +19,6 @@ func InitMetrics() {
 func pollMetrics() {
 	log.Println("Setting up metrics collector on ", config.Cfg.MapCollectionInterval, " interval")
 	for range time.Tick(config.Cfg.MapCollectionInterval) {
-		// TODO Once we get into the 1000s of IP pairs being tracked, the
-		// performance of this method becomes quite slow
 		bl := getBandwidthList(false)
 		log.Println("Collected bandwidth stats from ", len(bl), " ip pairs")
 		pairs := make([]database.PairBytes, 0, len(bl))
@@ -38,6 +36,7 @@ func pollMetrics() {
 			metrics.GetOrCreateFloatCounter(s).Set(float64(b.Bytes))
 		}
 		database.RecordUsage(time.Now(), pairs)
+		setLastBandwidth(bl)
 
 	}
 }

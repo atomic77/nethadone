@@ -8,7 +8,7 @@ A single Go binary (Go 1.26+, module `github.com/atomic77/nethadone`) that runs 
 
 Data flow:
 
-1. `ebpf/dnspkt.bpf.c` (tc filter on the WAN, ingress and egress) sniffs DNS answers and sends them to userspace through a perf array. `handlers/bpf.go:pollDnsResponses` stores the A records in the sqlite `dns` table.
+1. `ebpf/dnspkt.bpf.c` (tc filter on the WAN, ingress and egress) sniffs DNS answers and sends them to userspace through a perf array. `handlers/bpf.go:pollDnsResponses` stores each A record in the sqlite `dns` table under the queried name and every CNAME in the chain, lowercased without the trailing dot (globs are normalised the same way).
 2. `ebpf/trafficmon.bpf.c` (tc filter on LAN egress) counts bytes per (src,dst) IP pair in the hash map `src_dest_bytes`.
 3. Every `map_collection_interval`, `handlers/prom.go:pollMetrics` walks that map, looks up the domain and glob group for each pair, exports `ip_pair_vic_bytes_total{src_ip,dest_ip,prob_domain,glob}` on `/metrics` (optional, for graphs), and feeds `database.RecordUsage`. That keeps ~10 minutes of per (src_ip, glob) byte totals **in memory** (`database/usage.go`); history is lost on restart.
 4. Every `policy_check_interval`, `policy/simpleloadavg.go` asks `database.GetSrcGlobUsage` for windowed rates and moves each (src_ip, glob) policy up or down one bandwidth class. Policies live in the sqlite `policy` table.

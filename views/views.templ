@@ -157,13 +157,30 @@ templ Globs(globs []models.GlobGroup, form models.GlobGroup, errMsg string) {
 	}
 }
 
-templ Bandwidth(rows []models.Bandwidth) {
+func bandwidthPageURL(page int) string {
+	return "/bandwidth?page=" + strconv.Itoa(page)
+}
+
+templ Bandwidth(rows []models.Bandwidth, page, pages, total int) {
 	@layout("Bandwidth", "/bandwidth") {
 		<hgroup>
 			<h2>Data usage</h2>
 			<p>Bytes each device has downloaded from each remote IP, largest first. Refreshes every 30 seconds.</p>
 		</hgroup>
-		<div id="bandwidth" class="overflow-auto" hx-get="/bandwidth" hx-trigger="every 30s" hx-select="#bandwidth" hx-swap="outerHTML">
+		<div id="bandwidth" class="overflow-auto" hx-get={ bandwidthPageURL(page) } hx-trigger="every 30s" hx-select="#bandwidth" hx-swap="outerHTML">
+			<nav aria-label="Pagination">
+				<ul>
+					<li>{ strconv.Itoa(total) } IP pairs · page { strconv.Itoa(page) } of { strconv.Itoa(pages) }</li>
+				</ul>
+				<ul>
+					if page > 1 {
+						<li><a href={ templ.SafeURL(bandwidthPageURL(page - 1)) }>Previous</a></li>
+					}
+					if page < pages {
+						<li><a href={ templ.SafeURL(bandwidthPageURL(page + 1)) }>Next</a></li>
+					}
+				</ul>
+			</nav>
 			<table class="striped">
 				<thead><tr><th>Device IP</th><th>Remote IP</th><th>Likely domain</th><th>Glob group</th><th>Received</th></tr></thead>
 				<tbody>

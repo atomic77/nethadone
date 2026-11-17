@@ -14,8 +14,11 @@ More research on this required
 
 ## DNS CNAME Handling
 
-Will have to figure out how to deal with CNAME chains like `media.licdn.com` used by LinkedIn, so that
-we can associate the original request with the final IPs that are being used:
+Addressed: `handlers/bpf.go:handleDnsPacket` stores each A record under the queried name and every CNAME
+in the chain, so a glob on `*.licdn.com` matches the Akamai IPs below. Remaining gaps: answers over the
+508 byte capture (`DATA_LEN` in `ebpf/dnspkt.bpf.c`) and DNS over TCP are not seen.
+
+Example chain, for `media.licdn.com` used by LinkedIn:
 
 ```bash
 

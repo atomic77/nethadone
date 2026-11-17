@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"slices"
 	"testing"
 	"time"
 
@@ -60,7 +61,7 @@ func TestBPFTrafficMonitor(t *testing.T) {
 	skipUnlessRoot(t)
 	connectTempDb(t)
 	ip := net.ParseIP(remote)
-	database.AddDns("www.youtube.com.", &ip)
+	database.AddDns([]string{"www.youtube.com."}, []net.IP{ip})
 	database.AddGlob(&models.GlobGroup{Name: "yt", Glob: "*.youtube.com."})
 
 	objs := &trafficmonObjects{}
@@ -87,7 +88,7 @@ func TestBPFTrafficMonitor(t *testing.T) {
 	if want := uint64(2 * (len(pkt) - 14)); b.Bytes != want {
 		t.Errorf("bytes = %d, want %d", b.Bytes, want)
 	}
-	if b.ProbDomain != "www.youtube.com." || b.GlobName != "yt" {
+	if b.ProbDomain != "www.youtube.com" || b.GlobName != "yt" {
 		t.Errorf("domain/glob = %q/%q", b.ProbDomain, b.GlobName)
 	}
 }
@@ -116,7 +117,7 @@ func TestBPFDnsSniffer(t *testing.T) {
 		t.Fatal("no DNS event from sniffer: ", err)
 	}
 	handleDnsPacket(rec.RawSample)
-	if got := database.GetDomainForIP(remote); got != "edge.www.youtube.com." {
+	if got := database.GetDomainsByIP()[remote]; !slices.Contains(got, "www.youtube.com") || !slices.Contains(got, "edge.www.youtube.com") {
 		t.Errorf("sniffed answer stored as %q", got)
 	}
 	reader.SetDeadline(time.Now().Add(100 * time.Millisecond))
