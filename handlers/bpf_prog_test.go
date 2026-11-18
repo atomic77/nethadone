@@ -143,18 +143,13 @@ func loadThrottler(t *testing.T, policies []models.IpPolicy) *throttleObjects {
 	return objs
 }
 
-// throttleStat sums the per-CPU counter id (0 = scanned, 1 = throttled).
-func throttleStat(t *testing.T, objs *throttleObjects, id uint32) uint32 {
+func throttleStat(t *testing.T, objs *throttleObjects, id uint32) uint64 {
 	t.Helper()
-	var perCPU []uint32
-	if err := objs.Map.Lookup(id, &perCPU); err != nil {
+	n, err := objs.counter(id)
+	if err != nil {
 		t.Fatal(err)
 	}
-	var sum uint32
-	for _, v := range perCPU {
-		sum += v
-	}
-	return sum
+	return n
 }
 
 func TestBPFThrottlerMatches(t *testing.T) {

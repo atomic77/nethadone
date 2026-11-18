@@ -18,9 +18,9 @@ const (
 )
 
 // setup gives each test fresh sqlite DBs with a "yt" glob group, a usage
-// stub reporting `active` above and `idle` below the threshold, and a capture of
+// stub reporting `active` above the threshold (everyone else is below), and a capture of
 // what would have been compiled into the throttler.
-func setup(t *testing.T, active, idle []string) *[][]models.IpPolicy {
+func setup(t *testing.T, active []string) *[][]models.IpPolicy {
 	t.Helper()
 	dir := t.TempDir()
 	config.Cfg.DnsDb = filepath.Join(dir, "dns.db")
@@ -49,7 +49,7 @@ func setup(t *testing.T, active, idle []string) *[][]models.IpPolicy {
 		if above {
 			return vec(active)
 		}
-		return vec(idle)
+		panic("policy only asks for clients above the threshold")
 	}
 	applied := [][]models.IpPolicy{}
 	applyToKernel = func(p *[]models.IpPolicy) { applied = append(applied, *p) }
@@ -78,7 +78,7 @@ func wantClass(t *testing.T, src string, class int) {
 }
 
 func TestNewActiveClientGetsPolicy(t *testing.T) {
-	applied := setup(t, []string{clientA}, nil)
+	applied := setup(t, []string{clientA})
 
 	checkPolicies()
 
@@ -90,7 +90,7 @@ func TestNewActiveClientGetsPolicy(t *testing.T) {
 }
 
 func TestBackoffBlocksRecentChange(t *testing.T) {
-	applied := setup(t, []string{clientA}, nil)
+	applied := setup(t, []string{clientA})
 	setPolicy(t, clientA, 20)
 	config.Cfg.PolicyBackoffInterval = time.Hour
 
@@ -103,7 +103,7 @@ func TestBackoffBlocksRecentChange(t *testing.T) {
 }
 
 func TestIncreaseAfterBackoff(t *testing.T) {
-	setup(t, []string{clientA}, nil)
+	setup(t, []string{clientA})
 	setPolicy(t, clientA, 20)
 
 	checkPolicies()
@@ -112,7 +112,7 @@ func TestIncreaseAfterBackoff(t *testing.T) {
 }
 
 func TestIncreaseStopsAtSlowestClass(t *testing.T) {
-	setup(t, []string{clientA}, nil)
+	setup(t, []string{clientA})
 	// 5 qdisc classes -> leaves 0x10 (open) .. 0x60
 	setPolicy(t, clientA, 60)
 
@@ -122,7 +122,7 @@ func TestIncreaseStopsAtSlowestClass(t *testing.T) {
 }
 
 func TestIncreaseAndDecreaseInSameTick(t *testing.T) {
-	applied := setup(t, []string{clientA}, []string{clientB})
+	applied := setup(t, []string{clientA})
 	setPolicy(t, clientB, 30)
 
 	checkPolicies()
@@ -135,7 +135,7 @@ func TestIncreaseAndDecreaseInSameTick(t *testing.T) {
 }
 
 func TestDecreaseFromLowestClassDeletes(t *testing.T) {
-	applied := setup(t, nil, []string{clientB})
+	applied := setup(t, nil)
 	setPolicy(t, clientB, 10)
 
 	checkPolicies()
@@ -147,7 +147,7 @@ func TestDecreaseFromLowestClassDeletes(t *testing.T) {
 }
 
 func TestPolicyForDeletedGlobIsSkipped(t *testing.T) {
-	applied := setup(t, []string{clientA}, nil)
+	applied := setup(t, []string{clientA})
 	// Policy referencing a glob group that no longer exists must not panic
 	if err := database.UpdatePolicy(clientB, "gone", 20); err != nil {
 		t.Fatal(err)
@@ -157,6 +157,36 @@ func TestPolicyForDeletedGlobIsSkipped(t *testing.T) {
 
 	if len(*applied) != 1 || len((*applied)[0]) != 1 {
 		t.Errorf("want only clientA's policy applied, got %+v", *applied)
+	}
+}
+
+// A policy that survived a restart (or a DHCP change) has no usage entry at
+// all, and must still decay instead of staying throttled forever.
+func TestPolicyWithoutUsageDecays(t *testing.T) {
+	setup(t, nil)
+	setPolicy(t, clientB, 30)
+	if err := database.UpdatePolicy(clientB, "gone", 20); err != nil {
+		t.Fatal(err)
+	}
+
+	checkPolicies()
+
+	wantClass(t, clientB, 20)
+	if p := database.GetPolicy(clientB, "gone"); p == nil || p.Class != 10 {
+		t.Errorf("policy for deleted glob: want class 10, got %+v", p)
+	}
+}
+
+func TestNoDecayWithoutHistory(t *testing.T) {
+	applied := setup(t, nil)
+	setPolicy(t, clientB, 30)
+	database.GetSrcGlobUsage = func(time.Duration, time.Duration, int, bool) []database.SrcGlob { return nil }
+
+	checkPolicies()
+
+	wantClass(t, clientB, 30)
+	if len(*applied) != 0 {
+		t.Errorf("nothing changed but policies were applied: %+v", *applied)
 	}
 }
 

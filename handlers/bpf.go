@@ -8,7 +8,9 @@ import (
 	"os"
 	"os/exec"
 	"slices"
+	"sync"
 	"text/template"
+	"time"
 
 	"github.com/alecthomas/repr"
 	"github.com/atomic77/nethadone/config"
@@ -50,6 +52,19 @@ type BpfContext struct {
 }
 
 var BpfCtx BpfContext
+
+// counter sums throttle_stats entry id (0 = scanned, 1 = throttled) over all CPUs.
+func (objs *throttleObjects) counter(id uint32) (uint64, error) {
+	var perCPU []uint32
+	if err := objs.Map.Lookup(id, &perCPU); err != nil {
+		return 0, err
+	}
+	var sum uint64
+	for _, v := range perCPU {
+		sum += uint64(v)
+	}
+	return sum, nil
+}
 
 func (objs *throttleObjects) Close() error {
 	if err := objs.Prog.Close(); err != nil {
@@ -94,8 +109,19 @@ func ApplyPolicies(ipPolicies *[]models.IpPolicy) {
 	if err != nil {
 		log.Fatal(err)
 	}
+	throttleMu.Lock()
+	defer throttleMu.Unlock()
 	reattachThrottler(objs, config.Cfg.LanInterface, tc.HandleMinEgress)
+	throttleRules, throttleRulesAt = len(*ipPolicies), time.Now()
 }
+
+// throttleMu guards BpfCtx.ThrottleObjs, swapped by ApplyPolicies, and the rule count
+// and time of the loaded throttler, read by the shaping page.
+var (
+	throttleMu      sync.Mutex
+	throttleRules   int
+	throttleRulesAt time.Time
+)
 
 // buildThrottler renders the throttler for ipPolicies, compiles it with clang
 // and loads it into the kernel (running the verifier) without attaching it.

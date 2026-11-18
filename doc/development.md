@@ -27,7 +27,10 @@ The seams used by the tests are package variables: `database.GetSrcGlobUsage`
 
 `handlers/bpf_prog_test.go` loads `dnspkt`, `trafficmon` and a freshly compiled
 throttler and runs them with `BPF_PROG_TEST_RUN`. **Nothing is attached to any
-interface**, so this is safe on a workstation. It needs root (`go test -exec sudo`).
+real interface**, so this is safe on a workstation. It needs root (`go test -exec sudo`).
+`TestBPFShapingDummy` (`handlers/shaping_test.go`) is the one exception: it creates
+two throwaway dummy interfaces (`nthtest0`, `nthtest1`), builds the full qdisc tree
+and throttler on them, checks the `/shaping` page, and deletes them.
 
 `BPF_PROG_TEST_RUN` does not return `skb->tc_classid`, so throttler tests assert
 on the `throttle_stats` counters; the class value itself is checked by the

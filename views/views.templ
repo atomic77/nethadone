@@ -1,6 +1,7 @@
 package views
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -12,6 +13,8 @@ var navLinks = []struct{ Href, Name string }{
 	{"/policies", "Policies"},
 	{"/globs", "Globs"},
 	{"/bandwidth", "Bandwidth"},
+	{"/clients", "Clients"},
+	{"/shaping", "Shaping"},
 }
 
 // hx-boost turns links and forms into ajax body swaps, so navigation keeps the page loaded.
@@ -198,6 +201,124 @@ templ Bandwidth(rows []models.Bandwidth, page, pages, total int) {
 					}
 				</tbody>
 			</table>
+		</div>
+	}
+}
+
+templ Clients(clients []models.Client) {
+	@layout("Clients", "/clients") {
+		<hgroup>
+			<h2>Clients</h2>
+			<p>Devices on the LAN, from traffic counters, the neighbour (ARP) table and DHCP leases. Refreshes every 30 seconds.</p>
+		</hgroup>
+		<div id="clients" class="overflow-auto" hx-get="/clients" hx-trigger="every 30s" hx-select="#clients" hx-swap="outerHTML">
+			<table class="striped">
+				<thead><tr><th>IP</th><th>Hostname</th><th>MAC</th><th>State</th><th>Received</th><th>Remote IPs</th><th>Glob groups</th></tr></thead>
+				<tbody>
+					for _, c := range clients {
+						<tr>
+							<td>{ c.IpAddr.String() }</td>
+							<td>{ c.Hostname }</td>
+							<td>
+								<code>{ c.Mac }</code>
+								if c.Randomised {
+									<small data-tooltip="Locally administered (randomised) MAC"> private</small>
+								}
+							</td>
+							<td>{ c.State }</td>
+							<td>{ fmtBytes(c.Bytes) }</td>
+							<td>{ strconv.Itoa(c.Remotes) }</td>
+							<td>{ strings.Join(c.Globs, ", ") }</td>
+						</tr>
+					}
+					if len(clients) == 0 {
+						<tr><td colspan="7">No clients seen yet.</td></tr>
+					}
+				</tbody>
+			</table>
+		</div>
+	}
+}
+
+templ Shaping(s models.SysStats, tree []models.TcNode) {
+	@layout("Shaping", "/shaping") {
+		<hgroup>
+			<h2>Shaping</h2>
+			<p>Live kernel counters for the LAN traffic-shaping tree. Rates are averaged since the previous refresh (every 5 seconds).</p>
+		</hgroup>
+		<div id="shaping" hx-get="/shaping" hx-trigger="every 5s" hx-select="#shaping" hx-swap="outerHTML">
+			<div class="grid">
+				<article>
+					<header>System</header>
+					up { s.Uptime.String() }<br/>
+					load { fmt.Sprintf("%.2f %.2f %.2f", s.Load[0], s.Load[1], s.Load[2]) }<br/>
+					{ fmtBytes(s.MemAvail) } of { fmtBytes(s.MemTotal) } RAM available
+				</article>
+				<article>
+					<header>Throttler</header>
+					{ strconv.Itoa(s.Rules) } rules
+					if !s.RulesAt.IsZero() {
+						, rebuilt { s.RulesAt.UTC().Format("15:04:05") } UTC
+					}
+					<br/>
+					{ strconv.FormatUint(s.Throttled, 10) } of { strconv.FormatUint(s.Scanned, 10) } packets throttled since then
+				</article>
+			</div>
+			<h3>Interfaces</h3>
+			<div class="overflow-auto">
+				<table class="striped">
+					<thead><tr><th></th><th>Interface</th><th>Received</th><th>Rx rate</th><th>Sent</th><th>Tx rate</th><th>Drops (rx/tx)</th></tr></thead>
+					<tbody>
+						for _, i := range s.Ifaces {
+							<tr>
+								<td>{ i.Role }</td>
+								<td>{ i.Name }</td>
+								<td>{ fmtBytes(i.RxBytes) }</td>
+								<td>{ fmtBits(i.RxBps * 8) }</td>
+								<td>{ fmtBytes(i.TxBytes) }</td>
+								<td>{ fmtBits(i.TxBps * 8) }</td>
+								<td>{ strconv.FormatUint(i.RxDrops, 10) } / { strconv.FormatUint(i.TxDrops, 10) }</td>
+							</tr>
+						}
+					</tbody>
+				</table>
+			</div>
+			<h3>HTB tree</h3>
+			<p>Traffic towards LAN devices. Unmatched traffic goes to the default class; throttled pairs are sent to slower leaves.</p>
+			<div class="overflow-auto">
+				<table class="striped">
+					<thead><tr><th>Handle</th><th>Type</th><th>Limit</th><th>Rate now</th><th>Sent</th><th>Packets</th><th>Drops</th><th>Overlimits</th><th>Backlog</th><th>Policies</th></tr></thead>
+					<tbody>
+						for _, n := range tree {
+							<tr>
+								<td style={ fmt.Sprintf("padding-left:%.1frem", 0.5+1.5*float64(n.Depth)) }><code>{ n.Handle }</code></td>
+								<td>{ n.Kind }</td>
+								<td>
+									if n.CeilBits > 0 {
+										{ fmtBits(float64(n.CeilBits)) }
+									}
+									if n.DelayMs > 0 {
+										+{ fmt.Sprintf("%.0f", n.DelayMs) } ms
+									}
+									if n.DefaultCls != "" {
+										default { n.DefaultCls }
+									}
+								</td>
+								<td>{ fmtBits(n.Bps * 8) }</td>
+								<td>{ fmtBytes(n.Bytes) }</td>
+								<td>{ strconv.FormatUint(n.Packets, 10) }</td>
+								<td>{ strconv.FormatUint(uint64(n.Drops), 10) }</td>
+								<td>{ strconv.FormatUint(uint64(n.Overlimits), 10) }</td>
+								<td>{ fmtBytes(uint64(n.Backlog)) }</td>
+								<td>{ strings.Join(n.Policies, ", ") }</td>
+							</tr>
+						}
+						if len(tree) == 0 {
+							<tr><td colspan="10">No qdiscs found on the LAN interface.</td></tr>
+						}
+					</tbody>
+				</table>
+			</div>
 		</div>
 	}
 }

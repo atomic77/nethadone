@@ -18,6 +18,8 @@ var baseConfig = Config{
 	CfgDb: "/var/lib/nethadone/cfg.db",
 	DnsDb: "/var/lib/nethadone/dns.db",
 
+	DhcpLeasesFile: "/var/lib/NetworkManager/dnsmasq-*.leases",
+
 	MapCollectionInterval: time.Second * 30,
 	PolicyCheckInterval:   time.Minute * 1,
 
@@ -43,6 +45,9 @@ type Config struct {
 	// Database locations
 	CfgDb string `yaml:"cfg_db"`
 	DnsDb string `yaml:"dns_db"`
+
+	// dnsmasq leases file(s), a glob, read for client hostnames on /clients. Empty disables.
+	DhcpLeasesFile string `yaml:"dhcp_leases_file"`
 
 	// Operational parameters for tuning use on SBCs with different
 	// capabilities

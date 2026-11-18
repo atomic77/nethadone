@@ -11,6 +11,12 @@ lan_interface: "lan0"
 cfg_db: "/var/lib/nethadone/cfg.db"
 dns_db: "/var/lib/nethadone/dns.db"
 
+# dnsmasq leases file(s) (a glob) used to show client hostnames on the
+# Clients page. The default matches a NetworkManager hotspot (install.sh
+# --hotspot); a standalone dnsmasq usually writes /var/lib/misc/dnsmasq.leases.
+# Set to "" to disable.
+dhcp_leases_file: "/var/lib/NetworkManager/dnsmasq-*.leases"
+
 ###
 # Operational parameters
 

@@ -18,3 +18,14 @@ func fmtBytes(n uint64) string {
 
 // htmxConfig lets a 422 (form validation error) swap in like a 200.
 const htmxConfig = `{"responseHandling":[{"code":"204","swap":false},{"code":"422","swap":true},{"code":"[23]..","swap":true},{"code":"[45]..","swap":false,"error":true}]}`
+
+// fmtBits renders a rate in bits/s with an SI unit, e.g. 1500000 -> "1.5 Mbit/s".
+func fmtBits(bps float64) string {
+	for _, u := range []string{"bit/s", "kbit/s", "Mbit/s"} {
+		if bps < 1000 {
+			return fmt.Sprintf("%.3g %s", bps, u)
+		}
+		bps /= 1000
+	}
+	return fmt.Sprintf("%.3g Gbit/s", bps)
+}

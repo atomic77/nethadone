@@ -53,7 +53,7 @@ The CI workflow `.github/workflows/build-nethadone-binary.yml` (manual dispatch)
 See `doc/development.md` for the four levels. In short:
 
 - `make test`: `go vet ./...` + `go test ./...`. No root needed. Run this for every change.
-- `make test-bpf`: `go test -exec sudo ./handlers -run BPF`. Loads the BPF programs and runs them on synthetic packets with `BPF_PROG_TEST_RUN`. Attaches nothing. Needs root, clang and libbpf-dev.
+- `make test-bpf`: `go test -exec sudo ./handlers -run BPF`. Loads the BPF programs and runs them on synthetic packets with `BPF_PROG_TEST_RUN`. Attaches nothing to real interfaces (`TestBPFShapingDummy` builds the qdisc tree on throwaway dummies `nthtest0/1`). Needs root, clang and libbpf-dev.
 - `make test-vm KERNEL=v6.6.40`: the same, inside a virtme-ng VM on a chosen upstream kernel.
 - `scripts/netns-lab.sh`: the full binary inside a namespaced router topology. This is the only safe way to run the binary on a workstation.
 

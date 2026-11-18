@@ -91,16 +91,25 @@ func decreasingThrottling() bool {
 	changed := false
 	k, u := config.Cfg.ActivityThresholdBytes, config.Cfg.PolicyTimeUnit
 
-	s := database.GetSrcGlobUsage(5*u, 0, k, false)
+	active := database.GetSrcGlobUsage(5*u, 0, k, true)
+	if active == nil {
+		return false // not enough history yet (e.g. just restarted)
+	}
+	policies := database.GetAllPolicies()
+	if policies == nil {
+		return false
+	}
+	isActive := make(map[database.SrcGlob]bool, len(active))
+	for _, sg := range active {
+		isActive[sg] = true
+	}
 
-	log.Println(len(s), " globs that can be decreased")
-	for _, match := range s {
-		src_ip, glob := match.Src, match.Glob
-		p := database.GetPolicy(src_ip, glob)
-
-		if p == nil {
-			// If we have no policy in place and we're below the threshold
-			// there is no need to do anything
+	// Walk the stored policies rather than the usage store: policies outlive a
+	// restart, a DHCP address change or a deleted glob group, and a client that
+	// sends no traffic to the glob would otherwise never appear in usage at all.
+	for _, p := range *policies {
+		src_ip, glob := p.SrcIp, p.GlobGroup
+		if isActive[database.SrcGlob{Src: src_ip, Glob: glob}] {
 			continue
 		}
 

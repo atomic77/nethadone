@@ -84,7 +84,8 @@ func snapshotAt(t time.Time) *usageSnapshot {
 
 // GetSrcGlobUsage returns the (src_ip, glob) pairs whose byte rate per second,
 // averaged over `window` ending `ago` before the latest collection, is above (or below) k.
-// It returns nothing until enough history has been collected.
+// It returns nil until enough history has been collected, and a non-nil
+// (possibly empty) slice afterwards, so callers can tell the two apart.
 // It is a variable so tests can substitute canned results.
 var GetSrcGlobUsage = getSrcGlobUsage
 
@@ -103,7 +104,7 @@ func getSrcGlobUsage(window, ago time.Duration, k int, above bool) []SrcGlob {
 		return nil
 	}
 	secs := end.t.Sub(start.t).Seconds()
-	var res []SrcGlob
+	res := []SrcGlob{}
 	for sg, total := range end.totals {
 		r := float64(total-start.totals[sg]) / secs
 		if (above && r > float64(k)) || (!above && r < float64(k)) {

@@ -73,6 +73,8 @@ func main() {
 	mux.HandleFunc("GET /{$}", handlers.Index)
 	mux.HandleFunc("GET /policies", handlers.Policies)
 	mux.HandleFunc("GET /bandwidth", handlers.Bandwidth)
+	mux.HandleFunc("GET /clients", handlers.Clients)
+	mux.HandleFunc("GET /shaping", handlers.Shaping)
 	mux.HandleFunc("GET /globs", handlers.Globs)
 	mux.HandleFunc("POST /globs", handlers.GlobAdd)
 	mux.HandleFunc("POST /globs/delete", handlers.GlobDelete)

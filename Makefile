@@ -26,7 +26,7 @@ test: ## Unit tests (no root, no kernel features)
 	go vet ./...
 	go test ./...
 
-test-bpf: ## Run the BPF programs on synthetic packets (sudo; attaches nothing)
+test-bpf: ## Run the BPF programs on synthetic packets (sudo; attaches only to throwaway dummy interfaces)
 	go test -exec sudo ./handlers -run BPF -v
 
 test-vm: ## BPF tests in a virtme-ng VM booting upstream kernel $(KERNEL)
