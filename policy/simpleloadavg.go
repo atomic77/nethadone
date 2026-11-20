@@ -40,7 +40,7 @@ func getActiveGlobGroups() []database.SrcGlob {
 	// Anything returned is a client that has exceeded the
 	// policy for a given glob group
 
-	k, u := config.Cfg.ActivityThresholdBytes, config.Cfg.PolicyTimeUnit
+	k, u := config.GetTunables().ActivityThresholdBytes, config.Cfg.PolicyTimeUnit
 	return intersect(
 		database.GetSrcGlobUsage(2*u, 0, k, true),
 		database.GetSrcGlobUsage(2*u, 5*u, k, true),
@@ -52,6 +52,7 @@ func getActiveGlobGroups() []database.SrcGlob {
 func increaseThrottling() bool {
 
 	changed := false
+	backOff := time.Now().Add(-config.GetTunables().PolicyBackoffInterval)
 	s := getActiveGlobGroups()
 
 	log.Println("Found ", len(s), " globs for throttling")
@@ -70,7 +71,6 @@ func increaseThrottling() bool {
 			continue
 		}
 
-		backOff := time.Now().Add(-config.Cfg.PolicyBackoffInterval)
 		if p.Tstamp.After(backOff) {
 			log.Println("too soon to update policy for ", src_ip, glob)
 		} else if p.Class > config.Cfg.NumQdiscClasses*10 {
@@ -90,7 +90,8 @@ func increaseThrottling() bool {
 func decreasingThrottling() bool {
 
 	changed := false
-	k, u := config.Cfg.ActivityThresholdBytes, config.Cfg.PolicyTimeUnit
+	t, u := config.GetTunables(), config.Cfg.PolicyTimeUnit
+	k, backOff := t.ActivityThresholdBytes, time.Now().Add(-t.PolicyBackoffInterval)
 
 	active := database.GetSrcGlobUsage(5*u, 0, k, true)
 	if active == nil {
@@ -114,7 +115,6 @@ func decreasingThrottling() bool {
 			continue
 		}
 
-		backOff := time.Now().Add(-config.Cfg.PolicyBackoffInterval)
 		if p.Tstamp.After(backOff) {
 			log.Println("too soon to update policy for ", src_ip, glob)
 		} else if p.Class <= 10 {

@@ -136,6 +136,11 @@ func TestGetIpPolicies(t *testing.T) {
 		t.Errorf("got %+v, want %+v", got, want)
 	}
 
+	all := GetIpPolicies(&models.Policy{SrcIp: AllDevices, GlobGroup: "yt", Class: 30})
+	if all == nil || len(*all) != 1 || (*all)[0].SrcIpAddr != "" {
+		t.Errorf("all devices: got %+v, want an empty source so every device matches", all)
+	}
+
 	if got := GetIpPolicies(&models.Policy{GlobGroup: "missing"}); got != nil {
 		t.Errorf("missing glob group: got %+v, want nil", got)
 	}

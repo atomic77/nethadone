@@ -1,9 +1,11 @@
 package config
 
 import (
+	"errors"
 	"io"
 	"log"
 	"os"
+	"sync"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -32,9 +34,62 @@ var baseConfig = Config{
 	ActivityThresholdBytes: 100,
 	PolicyBackoffInterval:  time.Minute * 3,
 	PolicyTimeUnit:         time.Minute,
+	ThrottlePerDevice:      true,
 }
 
 var Cfg = baseConfig
+
+// Loaded is the config file that was read, empty when running on defaults.
+var Loaded string
+
+// fileTunables are the tunables from defaults + file, before any web UI override.
+var fileTunables = Tunables{baseConfig.ActivityThresholdBytes, baseConfig.PolicyBackoffInterval}
+
+// mu guards Cfg once the web server runs: SetTunables writes while the policy loop reads.
+var mu sync.RWMutex
+
+// Tunables are the settings the web UI can change while running. Overrides are
+// stored in cfg_db (database.SaveTunables); everything else comes from the file only.
+type Tunables struct {
+	ActivityThresholdBytes int
+	PolicyBackoffInterval  time.Duration
+}
+
+func (t Tunables) Validate() error {
+	if t.ActivityThresholdBytes < 0 || t.ActivityThresholdBytes > 100_000_000 {
+		return errors.New("activity threshold must be between 0 and 100000000 bytes/s")
+	}
+	if t.PolicyBackoffInterval < time.Second || t.PolicyBackoffInterval > 24*time.Hour {
+		return errors.New("backoff interval must be between 1s and 24h")
+	}
+	return nil
+}
+
+// Current returns a copy of Cfg that is safe to read while SetTunables may run.
+func Current() Config {
+	mu.RLock()
+	defer mu.RUnlock()
+	return Cfg
+}
+
+func GetTunables() Tunables {
+	mu.RLock()
+	defer mu.RUnlock()
+	return Tunables{Cfg.ActivityThresholdBytes, Cfg.PolicyBackoffInterval}
+}
+
+func SetTunables(t Tunables) error {
+	if err := t.Validate(); err != nil {
+		return err
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	Cfg.ActivityThresholdBytes, Cfg.PolicyBackoffInterval = t.ActivityThresholdBytes, t.PolicyBackoffInterval
+	return nil
+}
+
+// FileTunables are the tunables as set by the defaults and the config file.
+func FileTunables() Tunables { return fileTunables }
 
 type Config struct {
 	// The WAN interface should have access to the internet
@@ -80,6 +135,10 @@ type Config struct {
 	// Unit of the policy's rate windows (2 units now, 2 units ending 5 units
 	// ago, 5 units now). Only shorten it for testing.
 	PolicyTimeUnit time.Duration `yaml:"policy_time_unit"`
+	// true: each LAN device is measured and throttled on its own (several people).
+	// false: usage of all devices is summed per glob group and all are throttled
+	// together (one person with a phone and a laptop).
+	ThrottlePerDevice bool `yaml:"throttle_per_device"`
 }
 
 // DefaultFile is where install.sh puts the config and the systemd unit reads it.
@@ -105,4 +164,6 @@ func ParseConfig(file string, required bool) {
 	if err != nil && err != io.EOF {
 		log.Fatalln("failed to parse configuration file ", file, ": ", err)
 	}
+	Loaded = file
+	fileTunables = Tunables{Cfg.ActivityThresholdBytes, Cfg.PolicyBackoffInterval}
 }

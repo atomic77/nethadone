@@ -52,6 +52,8 @@ min_rate_kbs: 50
 # this can be set to a very low number like 0. For more bandwidth heavy
 # sites, a larger number may make sense. 
 activity_threshold_bytes: 100
+# activity_threshold_bytes and policy_backoff_interval can also be changed on
+# the web UI's Settings page; values saved there override this file.
 # How long before we'll consider a change to policy;
 # setting this lower will cause clients to be moved up and
 # down bandwidth classes faster
@@ -61,3 +63,11 @@ policy_backoff_interval: 3m
 # 2 units ending 5 units ago and 5 units now (see policy/README.md).
 # Leave at 1m; shorter values are only for testing (e.g. the netns lab).
 policy_time_unit: 1m
+
+# true: each device on the LAN is measured and throttled on its own, for
+# households where several people share the router.
+# false: the traffic of all devices is added up per glob group and every
+# device is throttled together, for one person with several devices (phone,
+# laptop) who should not get a fresh allowance by switching devices.
+# activity_threshold_bytes then applies to the combined traffic.
+throttle_per_device: true

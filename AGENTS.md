@@ -20,7 +20,7 @@ Data flow:
 |---|---|
 | `cmd/nethadone.go` | Entry point: flags, config, routes. |
 | `config/` | `Config` struct, defaults in `baseConfig`, global `config.Cfg`. `config/nethadone.yml` is the documented example. |
-| `database/` | sqlite through sqlx + `modernc.org/sqlite` (pure Go, no cgo). Two DBs: `cfg_db` (glob_group, device, policy) and `dns_db` (dns). Schema is created in `Connect()`. Also the in-memory usage store (`usage.go`). |
+| `database/` | sqlite through sqlx + `modernc.org/sqlite` (pure Go, no cgo). Two DBs: `cfg_db` (glob_group, device, policy, setting) and `dns_db` (dns). Schema is created in `Connect()`. Also the in-memory usage store (`usage.go`). |
 | `handlers/` | Mixes HTTP handlers (`handlers.go`), eBPF loading and attaching (`bpf.go`), qdisc setup (`qdisc.go`), metrics (`prom.go`) and the preflight checks (`check.go`). |
 | `handlers/*_bpfe[lb].{go,o}` | **Generated** by bpf2go and committed. Do not hand-edit. |
 | `handlers/throttle.bpf.c.tpl` | Throttler template, embedded via `handlers/embed.go`. This is the real source; `ebpf/throttle.bpf.c` is a gitignored render. |
@@ -61,10 +61,12 @@ Test seams are package variables: `database.GetSrcGlobUsage` (usage rates) and `
 
 ## Conventions and invariants
 
-- **Global state everywhere**: `config.Cfg`, `database.dnsDb/cfgDb/usage` and `handlers.BpfCtx`. Init order in `main` matters: `ParseConfig` → WAN detection → `handlers.Check` → `database.Connect` → `handlers.Initialize` (qdiscs + BPF) → `InitMetrics` → `InitPolicy` (attaches the throttler from the stored policies).
+- **Global state everywhere**: `config.Cfg`, `database.dnsDb/cfgDb/usage` and `handlers.BpfCtx`. Init order in `main` matters: `ParseConfig` → WAN detection → `handlers.Check` → `database.Connect` → `database.LoadTunables` → `handlers.Initialize` (qdiscs + BPF) → `InitMetrics` → `InitPolicy` (attaches the throttler from the stored policies).
 - **Web UI**: stdlib `net/http` mux in `cmd/nethadone.go`, wrapped in `http.CrossOriginProtection` (there is no login). Handlers render full pages; HTMX polling and `hx-boost` pick fragments with `hx-select`, so no partial endpoints. Form errors return 422 (swapped thanks to the `htmx-config` meta tag); success redirects with 303.
+- **Live settings**: only `config.Tunables` (`activity_threshold_bytes`, `policy_backoff_interval`) can change at runtime, from `/settings`. Read them with `config.GetTunables()`, never `config.Cfg` directly (the HTTP handler writes them under `config.mu`). Overrides live in the `setting` table and are stored only when they differ from the file. Every `Config` field needs help text in `handlers/settings.go:paramHelp` (a test enforces it).
 - **Errors**: setup and kernel failures call `log.Fatal`. Request-time and loop failures log and continue. There is no logging framework, only `log.Println`.
 - **Class IDs**: a policy `class` is a multiple of 10 (10, 20, …). The template emits it as `0x{{ .ClassId }}`, so class 10 becomes tc minor `0x10`. `qdisc.go:createLeafQdiscs` creates leaf classes `1:(idx+1)*16`, which are 0x10, 0x20, and so on. If you change either side, keep them in sync.
+- **Per-device vs shared throttling**: with `throttle_per_device: false`, `database.RecordUsage` sums usage under the source `database.AllDevices` ("all"), so policies are stored as `("all", glob)` and `GetIpPolicies` emits an empty `SrcIpAddr` (the template then matches the remote IP only). Policies of the other mode left over after a restart are never active and decay normally.
 - **IP format for BPF**: `IpPolicy.SrcIpAddr` and `DestIpAddr` use commas (`192,168,0,1`) because they feed the `IP_ADDRESS(o1,o2,o3,o4)` macro. The conversion happens in `database.GetIpPolicies`.
 - The throttler matches `l3->saddr == dest` and `l3->daddr == src` because it runs on **LAN egress**, so it sees reply traffic coming *back* from the remote site.
 - Glob groups use sqlite `GLOB` syntax (e.g. `*.reddit.com`), matched against the `dns` table. The UI validates them with `filepath.Match`, which also does the matching on `/bandwidth`. Only IPs seen in the last ~5 days count.

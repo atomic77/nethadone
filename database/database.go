@@ -40,6 +40,10 @@ func Connect() {
 			tstamp timestamp,
 			PRIMARY KEY (src_ip, glob_group)	
 		);`,
+		`CREATE TABLE IF NOT EXISTS setting (
+			name  text primary key,
+			value text
+		);`,
 	}
 
 	for _, db := range []string{config.Cfg.DnsDb, config.Cfg.CfgDb} {
@@ -210,10 +214,14 @@ func GetIpPolicies(p *models.Policy) *[]models.IpPolicy {
 	}
 	ipPolicies := make([]models.IpPolicy, len(ipstr))
 
+	src := strings.ReplaceAll(p.SrcIp, ".", ",")
+	if p.SrcIp == AllDevices {
+		src = "" // the throttler template then matches the remote IP for every LAN device
+	}
 	for idx := range ipPolicies {
 		ipPolicies[idx].ClassId = p.Class
 		ipPolicies[idx].DestIpAddr = strings.ReplaceAll(ipstr[idx], ".", ",")
-		ipPolicies[idx].SrcIpAddr = strings.ReplaceAll(p.SrcIp, ".", ",")
+		ipPolicies[idx].SrcIpAddr = src
 	}
 
 	return &ipPolicies

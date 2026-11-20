@@ -15,6 +15,7 @@ var navLinks = []struct{ Href, Name string }{
 	{"/bandwidth", "Bandwidth"},
 	{"/clients", "Clients"},
 	{"/shaping", "Shaping"},
+	{"/settings", "Settings"},
 }
 
 // hx-boost turns links and forms into ajax body swaps, so navigation keeps the page loaded.
@@ -90,7 +91,7 @@ templ Policies(policies []models.Policy, classLabel func(int) string) {
 	@layout("Policies", "/policies") {
 		<hgroup>
 			<h2>Throttling policies</h2>
-			<p>One per (device, glob group) currently being slowed down. Refreshes every 10 seconds.</p>
+			<p>One per (device, glob group) currently being slowed down; device "all" means every device together (<code>throttle_per_device: false</code>). Refreshes every 10 seconds.</p>
 		</hgroup>
 		<div id="policies" class="overflow-auto" hx-get="/policies" hx-trigger="every 10s" hx-select="#policies" hx-swap="outerHTML">
 			<table class="striped">
@@ -319,6 +320,77 @@ templ Shaping(s models.SysStats, tree []models.TcNode) {
 					</tbody>
 				</table>
 			</div>
+		</div>
+	}
+}
+
+func paramInputType(name string) string {
+	if name == "activity_threshold_bytes" {
+		return "number"
+	}
+	return "text"
+}
+
+// tunables are editable and take effect at the next policy check; params come from the config file only.
+templ Settings(tunables, params []models.Param, configFile, errMsg string) {
+	@layout("Settings", "/settings") {
+		<hgroup>
+			<h2>Settings</h2>
+			<p>Two settings can be changed here while nethadone runs. Everything else comes from the configuration file.</p>
+		</hgroup>
+		<article>
+			<header>Live settings</header>
+			<form method="post" action="/settings">
+				if errMsg != "" {
+					<p role="alert"><mark>{ errMsg }</mark></p>
+				}
+				for _, p := range tunables {
+					<label>
+						<code>{ p.Name }</code>
+						<input name={ p.Name } type={ paramInputType(p.Name) } required value={ p.Value } aria-describedby={ p.Name + "-help" }/>
+						<small id={ p.Name + "-help" }>
+							{ p.Help }
+							if p.File != "" {
+								<br/><mark>Overrides the configuration file value of { p.File }.</mark>
+							}
+						</small>
+					</label>
+				}
+				<p><small>Durations are written like <code>90s</code>, <code>3m</code> or <code>1h30m</code>. Changes apply at the next policy check and are kept across restarts.</small></p>
+				<div role="group">
+					<button type="submit">Save</button>
+					<button type="submit" class="secondary" formaction="/settings/reset" formnovalidate>Reset to configuration file</button>
+				</div>
+			</form>
+		</article>
+		<h3>From the configuration file</h3>
+		<p>
+			if configFile != "" {
+				Read from <code>{ configFile }</code>.
+			} else {
+				No configuration file was found, so these are the built-in defaults.
+			}
+			To change them, edit the file and restart nethadone (<code>systemctl restart nethadone</code>).
+		</p>
+		<div class="overflow-auto">
+			<table class="striped">
+				<thead><tr><th>Setting</th><th>Value</th><th>What it does</th></tr></thead>
+				<tbody>
+					for _, p := range params {
+						<tr>
+							<td><code>{ p.Name }</code></td>
+							<td>
+								if p.Value == "" {
+									<em>empty</em>
+								} else {
+									{ p.Value }
+								}
+							</td>
+							<td>{ p.Help }</td>
+						</tr>
+					}
+				</tbody>
+			</table>
 		</div>
 	}
 }

@@ -14,6 +14,9 @@ import (
 // usageRetention must cover the longest window+offset the policy asks for (2 units ending 5 units ago).
 func usageRetention() time.Duration { return 10 * config.Cfg.PolicyTimeUnit }
 
+// AllDevices is the source used for usage and policies when throttle_per_device is off.
+const AllDevices = "all"
+
 type SrcGlob struct {
 	Src  string
 	Glob string
@@ -43,6 +46,7 @@ func RecordUsage(now time.Time, pairs []PairBytes) {
 	if usage.totals == nil {
 		usage.totals = map[SrcGlob]uint64{}
 	}
+	perDevice := config.Cfg.ThrottlePerDevice
 	last := make(map[[2]string]uint64, len(pairs))
 	for _, p := range pairs {
 		k := [2]string{p.Src, p.Dst}
@@ -55,7 +59,11 @@ func RecordUsage(now time.Time, pairs []PairBytes) {
 			delta = p.Bytes - prev
 		}
 		if p.Glob != "" {
-			usage.totals[SrcGlob{p.Src, p.Glob}] += delta
+			src := p.Src
+			if !perDevice {
+				src = AllDevices
+			}
+			usage.totals[SrcGlob{src, p.Glob}] += delta
 		}
 	}
 	usage.last = last

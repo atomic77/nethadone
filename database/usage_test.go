@@ -4,6 +4,8 @@ import (
 	"sort"
 	"testing"
 	"time"
+
+	"github.com/atomic77/nethadone/config"
 )
 
 var t0 = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -119,4 +121,19 @@ func TestUsageRetention(t *testing.T) {
 	if span := usage.snaps[len(usage.snaps)-1].t.Sub(usage.snaps[0].t); span > usageRetention() {
 		t.Errorf("kept %v of snapshots, want <= %v", span, usageRetention())
 	}
+}
+
+// With throttle_per_device off, two devices each below the threshold add up to one active "all" source.
+func TestUsageSharedAcrossDevices(t *testing.T) {
+	resetUsage(t)
+	config.Cfg.ThrottlePerDevice = false
+	t.Cleanup(func() { config.Cfg.ThrottlePerDevice = true })
+	feed(t0, 21, func(i int) []PairBytes {
+		n := uint64(i) * 30 * 600
+		return []PairBytes{
+			{Src: "phone", Dst: "yt1", Glob: "yt", Bytes: n},
+			{Src: "laptop", Dst: "yt2", Glob: "yt", Bytes: n},
+		}
+	})
+	wantSrcs(t, GetSrcGlobUsage(2*time.Minute, 0, 1000, true), AllDevices+"/yt")
 }

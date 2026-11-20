@@ -64,6 +64,7 @@ func main() {
 		log.Fatal("preflight checks failed, see above; run `nethadone check` after fixing")
 	}
 	database.Connect()
+	database.LoadTunables()
 	handlers.Initialize()
 
 	handlers.InitMetrics()
@@ -78,6 +79,9 @@ func main() {
 	mux.HandleFunc("GET /globs", handlers.Globs)
 	mux.HandleFunc("POST /globs", handlers.GlobAdd)
 	mux.HandleFunc("POST /globs/delete", handlers.GlobDelete)
+	mux.HandleFunc("GET /settings", handlers.Settings)
+	mux.HandleFunc("POST /settings", handlers.SettingsSave)
+	mux.HandleFunc("POST /settings/reset", handlers.SettingsReset)
 	mux.HandleFunc("GET /metrics", handlers.MetricsHandleFunc)
 	mux.Handle("GET /static/", http.FileServerFS(views.Static))
 

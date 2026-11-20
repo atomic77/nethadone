@@ -96,3 +96,9 @@ type Iface struct {
 	Up    bool
 	Addrs []string
 }
+
+// Param is one configuration setting for the settings page. File is the config file's value
+// when it differs from Value (a web UI override), empty otherwise.
+type Param struct {
+	Name, Value, File, Help string
+}
