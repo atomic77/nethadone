@@ -131,7 +131,7 @@ func TestGetIpPolicies(t *testing.T) {
 	}
 
 	got := GetIpPolicies(&models.Policy{SrcIp: "192.168.0.2", GlobGroup: "yt", Class: 30})
-	want := []models.IpPolicy{{SrcIpAddr: "192,168,0,2", DestIpAddr: "142,250,1,1", ClassId: 30}}
+	want := []models.IpPolicy{{SrcIpAddr: "192,168,0,2", DestIpAddr: "142,250,1,1", ClassId: 30, GlobGroup: "yt"}}
 	if got == nil || len(*got) != 1 || (*got)[0] != want[0] {
 		t.Errorf("got %+v, want %+v", got, want)
 	}

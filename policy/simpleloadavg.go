@@ -1,7 +1,9 @@
 package policy
 
 import (
+	"cmp"
 	"log"
+	"slices"
 	"time"
 
 	"github.com/atomic77/nethadone/config"
@@ -49,9 +51,8 @@ func getActiveGlobGroups() []database.SrcGlob {
 }
 
 // See README "Increasing throttling" section for policy details
-func increaseThrottling() bool {
+func increaseThrottling() {
 
-	changed := false
 	backOff := time.Now().Add(-config.GetTunables().PolicyBackoffInterval)
 	s := getActiveGlobGroups()
 
@@ -66,7 +67,6 @@ func increaseThrottling() bool {
 				log.Println("could not update policy: ", err)
 			} else {
 				log.Println("Setting new policy for ", src_ip, glob)
-				changed = true
 			}
 			continue
 		}
@@ -79,27 +79,22 @@ func increaseThrottling() bool {
 			log.Println("increasing throttling policy for ", src_ip, glob)
 			if err := database.UpdatePolicy(src_ip, glob, p.Class+10); err != nil {
 				log.Println("could not update policy: ", err)
-			} else {
-				changed = true
 			}
 		}
 	}
-	return changed
 }
 
-func decreasingThrottling() bool {
-
-	changed := false
+func decreasingThrottling() {
 	t, u := config.GetTunables(), config.Cfg.PolicyTimeUnit
 	k, backOff := t.ActivityThresholdBytes, time.Now().Add(-t.PolicyBackoffInterval)
 
 	active := database.GetSrcGlobUsage(5*u, 0, k, true)
 	if active == nil {
-		return false // not enough history yet (e.g. just restarted)
+		return // not enough history yet (e.g. just restarted)
 	}
 	policies := database.GetAllPolicies()
 	if policies == nil {
-		return false
+		return
 	}
 	isActive := make(map[database.SrcGlob]bool, len(active))
 	for _, sg := range active {
@@ -120,14 +115,11 @@ func decreasingThrottling() bool {
 		} else if p.Class <= 10 {
 			log.Println("deleting policy for ", src_ip, glob)
 			database.DeletePolicy(src_ip, glob)
-			changed = true
 		} else {
 			log.Println("decreasing throttling policy for ", src_ip, glob)
 			database.UpdatePolicy(src_ip, glob, p.Class-10)
-			changed = true
 		}
 	}
-	return changed
 }
 
 func pollPolicyCheck() {
@@ -140,29 +132,41 @@ func pollPolicyCheck() {
 
 func checkPolicies() {
 	database.PruneDns()
-	increased := increaseThrottling()
-	decreased := decreasingThrottling()
-	if increased || decreased {
-		applyPolicies()
-	}
+	increaseThrottling()
+	decreasingThrottling()
+	// Always: a glob group gains IPs (a new video CDN host) without any class changing
+	applyPolicies()
 }
 
 // applyToKernel is a variable so tests can capture policies instead of compiling BPF.
 var applyToKernel = handlers.ApplyPolicies
 
+// lastRules are the rules last sent to applyToKernel, sorted; nil until the first apply.
+// Compared with what was sent, not what loaded, so a build that fails (clang out of
+// memory) is retried only when the rules change, not on every check.
+var lastRules []models.IpPolicy
+
+// applyPolicies rebuilds the throttler when the rules differ from the last ones sent:
+// a class changed, a policy came or went, or a glob group matched new IPs.
 func applyPolicies() {
-	log.Println("Reapplying policy")
 	policies := database.GetAllPolicies()
 	if policies == nil {
 		return
 	}
-	allPolicies := make([]models.IpPolicy, 0)
+	rules := make([]models.IpPolicy, 0)
 	for _, p := range *policies {
 		ipPolicies := database.GetIpPolicies(&p)
 		if ipPolicies != nil {
-			allPolicies = append(allPolicies, *ipPolicies...)
+			rules = append(rules, *ipPolicies...)
 		}
 	}
-	applyToKernel(&allPolicies)
-
+	slices.SortFunc(rules, func(a, b models.IpPolicy) int {
+		return cmp.Or(cmp.Compare(a.SrcIpAddr, b.SrcIpAddr), cmp.Compare(a.GlobGroup, b.GlobGroup), cmp.Compare(a.DestIpAddr, b.DestIpAddr))
+	})
+	if lastRules != nil && slices.Equal(rules, lastRules) {
+		return
+	}
+	log.Println("Reapplying policy: ", len(rules), " rules")
+	lastRules = rules
+	applyToKernel(&rules)
 }

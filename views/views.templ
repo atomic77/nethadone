@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/atomic77/nethadone/models"
 )
@@ -86,28 +87,53 @@ templ Status(lan, wan string, nGlobs, nPolicies int, ifaces []models.Iface) {
 	}
 }
 
-// classLabel describes a bandwidth class, e.g. "250 kbit/s, +20 ms".
-templ Policies(policies []models.Policy, classLabel func(int) string) {
+// classLabel describes a bandwidth class, e.g. "250 kbit/s, +20 ms". nRules and rulesAt describe the running throttler.
+templ Policies(rows []models.PolicyRow, nRules int, rulesAt time.Time, classLabel func(int) string) {
 	@layout("Policies", "/policies") {
 		<hgroup>
 			<h2>Throttling policies</h2>
-			<p>One per (device, glob group) currently being slowed down; device "all" means every device together (<code>throttle_per_device: false</code>). Refreshes every 10 seconds.</p>
+			<p>One per (device, glob group) currently being slowed down; device "all" means every device together (<code>throttle_per_device: false</code>). Refreshes every 10 seconds, paused while a list of remote IPs is open.</p>
 		</hgroup>
-		<div id="policies" class="overflow-auto" hx-get="/policies" hx-trigger="every 10s" hx-select="#policies" hx-swap="outerHTML">
+		<div id="policies" class="overflow-auto" hx-get="/policies" hx-trigger="every 10s [!document.querySelector('#policies details[open]')]" hx-select="#policies" hx-swap="outerHTML">
+			<p>
+				<small>
+					if rulesAt.IsZero() {
+						The throttler has not been built yet.
+					} else {
+						Running throttler: { strconv.Itoa(nRules) } rules, built { rulesAt.UTC().Format("15:04:05") } UTC.
+					}
+				</small>
+			</p>
 			<table class="striped">
-				<thead><tr><th>Device IP</th><th>Glob group</th><th>Class</th><th>Bandwidth</th><th>Since (UTC)</th></tr></thead>
+				<thead><tr><th>Device</th><th>Hostname</th><th>Glob group</th><th>Class</th><th>Bandwidth</th><th>Since (UTC)</th><th>Remote IPs</th></tr></thead>
 				<tbody>
-					for _, p := range policies {
+					for _, p := range rows {
 						<tr>
 							<td>{ p.SrcIp }</td>
+							<td>{ p.Hostname }</td>
 							<td>{ p.GlobGroup }</td>
 							<td>{ strconv.Itoa(p.Class) }</td>
 							<td>{ classLabel(p.Class) }</td>
 							<td>{ p.Tstamp.Format("2006-01-02 15:04:05") }</td>
+							<td>
+								if len(p.Remotes) > 0 {
+									<details style="margin:0">
+										<summary>{ strconv.Itoa(len(p.Remotes)) } IPs</summary>
+										<ul>
+											for _, r := range p.Remotes {
+												<li><code>{ r.IP }</code> { r.Domain }</li>
+											}
+										</ul>
+									</details>
+								}
+								if p.Note != "" {
+									<mark>{ p.Note }</mark>
+								}
+							</td>
 						</tr>
 					}
-					if len(policies) == 0 {
-						<tr><td colspan="5">Nothing is being throttled right now.</td></tr>
+					if len(rows) == 0 {
+						<tr><td colspan="7">Nothing is being throttled right now.</td></tr>
 					}
 				</tbody>
 			</table>

@@ -103,16 +103,23 @@ func ApplyPolicies(ipPolicies *[]models.IpPolicy) {
 	throttleMu.Lock()
 	defer throttleMu.Unlock()
 	reattachThrottler(objs, config.Cfg.LanInterface)
-	throttleRules, throttleRulesAt = len(*ipPolicies), time.Now()
+	throttleRules, throttleRulesAt = *ipPolicies, time.Now()
 }
 
-// throttleMu guards BpfCtx.ThrottleObjs, swapped by ApplyPolicies, and the rule count
-// and time of the loaded throttler, read by the shaping page.
+// throttleMu guards BpfCtx.ThrottleObjs, swapped by ApplyPolicies, and the rules
+// and build time of the loaded throttler, read by the shaping and policies pages.
 var (
 	throttleMu      sync.Mutex
-	throttleRules   int
+	throttleRules   []models.IpPolicy // replaced, never mutated
 	throttleRulesAt time.Time
 )
+
+// loadedRules returns the rules the attached throttler was built from.
+func loadedRules() ([]models.IpPolicy, time.Time) {
+	throttleMu.Lock()
+	defer throttleMu.Unlock()
+	return throttleRules, throttleRulesAt
+}
 
 // buildThrottler renders the throttler for ipPolicies, compiles it with clang
 // and loads it into the kernel (running the verifier) without attaching it.

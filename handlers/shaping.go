@@ -156,7 +156,7 @@ func sysStats(now time.Time) models.SysStats {
 	}
 	throttleMu.Lock()
 	defer throttleMu.Unlock()
-	s.Rules, s.RulesAt = throttleRules, throttleRulesAt
+	s.Rules, s.RulesAt = len(throttleRules), throttleRulesAt
 	if t := BpfCtx.ThrottleObjs; t != nil && t.Map != nil {
 		var err error
 		if s.Scanned, err = t.counter(0); err == nil {

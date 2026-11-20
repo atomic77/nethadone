@@ -53,8 +53,15 @@ func setup(t *testing.T, active []string) *[][]models.IpPolicy {
 	}
 	applied := [][]models.IpPolicy{}
 	applyToKernel = func(p *[]models.IpPolicy) { applied = append(applied, *p) }
-	t.Cleanup(func() { database.GetSrcGlobUsage, applyToKernel = origQuery, origApply })
+	lastRules = nil
+	t.Cleanup(func() { database.GetSrcGlobUsage, applyToKernel, lastRules = origQuery, origApply, nil })
 	return &applied
+}
+
+// synced applies the stored policies, as InitPolicy does at startup, and forgets that apply.
+func synced(applied *[][]models.IpPolicy) {
+	applyPolicies()
+	*applied = (*applied)[:0]
 }
 
 func setPolicy(t *testing.T, src string, class int) {
@@ -83,7 +90,7 @@ func TestNewActiveClientGetsPolicy(t *testing.T) {
 	checkPolicies()
 
 	wantClass(t, clientA, 10)
-	want := models.IpPolicy{SrcIpAddr: "192,168,0,2", DestIpAddr: "142,250,1,1", ClassId: 10}
+	want := models.IpPolicy{SrcIpAddr: "192,168,0,2", DestIpAddr: "142,250,1,1", ClassId: 10, GlobGroup: "yt"}
 	if len(*applied) != 1 || len((*applied)[0]) != 1 || (*applied)[0][0] != want {
 		t.Errorf("applied %+v, want one apply of %+v", *applied, want)
 	}
@@ -93,6 +100,7 @@ func TestBackoffBlocksRecentChange(t *testing.T) {
 	applied := setup(t, []string{clientA})
 	setPolicy(t, clientA, 20)
 	config.Cfg.PolicyBackoffInterval = time.Hour
+	synced(applied)
 
 	checkPolicies()
 
@@ -181,12 +189,33 @@ func TestNoDecayWithoutHistory(t *testing.T) {
 	applied := setup(t, nil)
 	setPolicy(t, clientB, 30)
 	database.GetSrcGlobUsage = func(time.Duration, time.Duration, int, bool) []database.SrcGlob { return nil }
+	synced(applied)
 
 	checkPolicies()
 
 	wantClass(t, clientB, 30)
 	if len(*applied) != 0 {
 		t.Errorf("nothing changed but policies were applied: %+v", *applied)
+	}
+}
+
+// A new video CDN host resolves to a new IP while the class stays put (backoff, or already
+// at the slowest class): the throttler must still be rebuilt to include it, once.
+func TestNewGlobIPRebuildsWithoutClassChange(t *testing.T) {
+	applied := setup(t, []string{clientA})
+	setPolicy(t, clientA, 20)
+	config.Cfg.PolicyBackoffInterval = time.Hour
+	synced(applied)
+
+	if err := database.AddDns([]string{"rr1.youtube.com."}, []net.IP{net.ParseIP("142.250.9.9")}); err != nil {
+		t.Fatal(err)
+	}
+	checkPolicies()
+	checkPolicies()
+
+	wantClass(t, clientA, 20)
+	if len(*applied) != 1 || len((*applied)[0]) != 2 {
+		t.Errorf("want one rebuild with both IPs, got %+v", *applied)
 	}
 }
 

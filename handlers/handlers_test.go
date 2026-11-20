@@ -218,3 +218,36 @@ func TestPairMetricNameEscapes(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestPolicyRows(t *testing.T) {
+	policies := []models.Policy{
+		{SrcIp: "192.168.0.2", GlobGroup: "yt", Class: 30},
+		{SrcIp: database.AllDevices, GlobGroup: "yt", Class: 20},
+		{SrcIp: "192.168.0.3", GlobGroup: "yt", Class: 40}, // rebuild failed: kernel still has 30
+		{SrcIp: "192.168.0.4", GlobGroup: "rd", Class: 10}, // not in the throttler at all
+	}
+	rules := []models.IpPolicy{
+		{SrcIpAddr: "192,168,0,2", DestIpAddr: "142,250,1,10", ClassId: 30, GlobGroup: "yt"},
+		{SrcIpAddr: "192,168,0,2", DestIpAddr: "142,250,1,9", ClassId: 30, GlobGroup: "yt"},
+		{SrcIpAddr: "", DestIpAddr: "142,250,1,9", ClassId: 20, GlobGroup: "yt"},
+		{SrcIpAddr: "192,168,0,3", DestIpAddr: "142,250,1,9", ClassId: 30, GlobGroup: "yt"},
+	}
+	domains := map[string][]string{"142.250.1.9": {"cdn.example.net", "www.youtube.com"}}
+	globs := []models.GlobGroup{{Name: "yt", Glob: "*.youtube.com"}}
+	rows := policyRows(policies, rules, map[string]string{"192.168.0.2": "kids-laptop"}, domains, globs)
+
+	r := rows[0]
+	if r.Hostname != "kids-laptop" || r.Note != "" || len(r.Remotes) != 2 ||
+		r.Remotes[0] != (models.RemoteIP{IP: "142.250.1.9", Domain: "www.youtube.com"}) || r.Remotes[1].IP != "142.250.1.10" {
+		t.Errorf("per-device row: %+v", r)
+	}
+	if r := rows[1]; r.Hostname != "every device" || len(r.Remotes) != 1 || r.Note != "" {
+		t.Errorf("all-devices row: %+v", r)
+	}
+	if r := rows[2]; !strings.Contains(r.Note, "still uses class 30") {
+		t.Errorf("stale row note: %q", r.Note)
+	}
+	if r := rows[3]; len(r.Remotes) != 0 || !strings.Contains(r.Note, "Not in the running throttler") {
+		t.Errorf("missing row: %+v", r)
+	}
+}

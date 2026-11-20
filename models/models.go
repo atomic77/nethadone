@@ -29,7 +29,21 @@ type Policy struct {
 type IpPolicy struct {
 	SrcIpAddr  string
 	DestIpAddr string
-	ClassId    int // The 'integer' part, not including 0x
+	ClassId    int    // The 'integer' part, not including 0x
+	GlobGroup  string // for the web UI only; not used by the template
+}
+
+// RemoteIP is one remote address the running throttler slows down, with its likely domain.
+type RemoteIP struct {
+	IP, Domain string
+}
+
+// PolicyRow is a policy as shown on /policies: who it is and what the running throttler matches for it.
+type PolicyRow struct {
+	Policy
+	Hostname string
+	Remotes  []RemoteIP
+	Note     string // set when the running throttler does not (yet) enforce the stored policy
 }
 
 // Bandwidth is one (LAN client, remote IP) pair from the trafficmon map, for the UI.

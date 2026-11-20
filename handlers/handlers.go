@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"bytes"
 	"cmp"
 	"encoding/binary"
 	"errors"
@@ -63,7 +64,54 @@ func Policies(w http.ResponseWriter, r *http.Request) {
 	if p := database.GetAllPolicies(); p != nil {
 		policies = *p
 	}
-	render(w, r, views.Policies(policies, classLabel))
+	hostnames := map[string]string{}
+	for _, l := range readLeases() {
+		if l.hostname != "" {
+			hostnames[l.ip.String()] = l.hostname
+		}
+	}
+	rules, at := loadedRules()
+	rows := policyRows(policies, rules, hostnames, database.GetDomainsByIP(), database.GetGlobs())
+	render(w, r, views.Policies(rows, len(rules), at, classLabel))
+}
+
+// policyRows joins the stored policies with the rules of the running throttler. A policy whose
+// rules are missing or carry another class gets a Note: the rebuild failed or has not happened yet.
+func policyRows(policies []models.Policy, rules []models.IpPolicy, hostnames map[string]string,
+	domains map[string][]string, globs []models.GlobGroup) []models.PolicyRow {
+	type key struct{ src, glob string }
+	byPolicy := map[key][]models.IpPolicy{}
+	for _, r := range rules {
+		src := strings.ReplaceAll(r.SrcIpAddr, ",", ".")
+		if src == "" {
+			src = database.AllDevices
+		}
+		byPolicy[key{src, r.GlobGroup}] = append(byPolicy[key{src, r.GlobGroup}], r)
+	}
+	rows := make([]models.PolicyRow, 0, len(policies))
+	for _, p := range policies {
+		row := models.PolicyRow{Policy: p, Hostname: hostnames[p.SrcIp]}
+		if p.SrcIp == database.AllDevices {
+			row.Hostname = "every device"
+		}
+		matched := byPolicy[key{p.SrcIp, p.GlobGroup}]
+		for _, r := range matched {
+			ip := strings.ReplaceAll(r.DestIpAddr, ",", ".")
+			dom, _ := matchDomains(globs, domains[ip])
+			row.Remotes = append(row.Remotes, models.RemoteIP{IP: ip, Domain: dom})
+		}
+		slices.SortFunc(row.Remotes, func(a, b models.RemoteIP) int {
+			return bytes.Compare(net.ParseIP(a.IP).To16(), net.ParseIP(b.IP).To16())
+		})
+		switch {
+		case len(matched) == 0:
+			row.Note = "Not in the running throttler: no remote IPs seen for this glob group yet, or the rebuild is pending or failed."
+		case matched[0].ClassId != p.Class:
+			row.Note = fmt.Sprintf("The running throttler still uses class %d; the rebuild is pending or failed.", matched[0].ClassId)
+		}
+		rows = append(rows, row)
+	}
+	return rows
 }
 
 func Globs(w http.ResponseWriter, r *http.Request) {

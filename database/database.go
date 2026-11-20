@@ -222,6 +222,7 @@ func GetIpPolicies(p *models.Policy) *[]models.IpPolicy {
 		ipPolicies[idx].ClassId = p.Class
 		ipPolicies[idx].DestIpAddr = strings.ReplaceAll(ipstr[idx], ".", ",")
 		ipPolicies[idx].SrcIpAddr = src
+		ipPolicies[idx].GlobGroup = p.GlobGroup
 	}
 
 	return &ipPolicies

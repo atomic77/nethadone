@@ -12,7 +12,7 @@ Data flow:
 2. `ebpf/trafficmon.bpf.c` (tc filter on LAN egress) counts bytes per (src,dst) IP pair in the hash map `src_dest_bytes`.
 3. Every `map_collection_interval`, `handlers/prom.go:pollMetrics` walks that map, looks up the domain and glob group for each pair, exports `ip_pair_vic_bytes_total{src_ip,dest_ip,prob_domain,glob}` on `/metrics` (optional, for graphs), and feeds `database.RecordUsage`. That keeps ~10 minutes of per (src_ip, glob) byte totals **in memory** (`database/usage.go`); history is lost on restart.
 4. Every `policy_check_interval`, `policy/simpleloadavg.go` asks `database.GetSrcGlobUsage` for windowed rates and moves each (src_ip, glob) policy up or down one bandwidth class. Policies live in the sqlite `policy` table.
-5. When any policy changes, `handlers.ApplyPolicies` renders `handlers/throttle.bpf.c.tpl` with one `if` per IP pair, **compiles it with `clang` at runtime**, and swaps it in as the tc filter on the LAN HTB root (`1:`). The filter sets `skb->tc_classid`.
+5. On every policy check, `policy.applyPolicies` rebuilds the rule list (policies × the IPs their glob group matched in DNS) and, if it differs from the last one sent (a class changed, or a glob gained IPs such as a new video CDN host), `handlers.ApplyPolicies` renders `handlers/throttle.bpf.c.tpl` with one `if` per IP pair, **compiles it with `clang` at runtime**, and swaps it in as the tc filter on the LAN HTB root (`1:`). The filter sets `skb->tc_classid`.
 
 ## Layout
 
