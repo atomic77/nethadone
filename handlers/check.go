@@ -87,8 +87,7 @@ func Check(out io.Writer) bool {
 	} else if objs, err := buildThrottler(&[]models.IpPolicy{}); err != nil {
 		c.fail(pkgFix, "throttler test compile/load failed: %v", err)
 	} else {
-		objs.Map.Close()
-		objs.Prog.Close()
+		objs.Close()
 		c.ok("throttler compiles with clang and passes the verifier")
 	}
 

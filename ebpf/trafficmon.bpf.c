@@ -25,7 +25,7 @@
 #include <bpf/bpf_tracing.h>
 
 struct {
-    __uint(type, BPF_MAP_TYPE_HASH);
+    __uint(type, BPF_MAP_TYPE_LRU_HASH); // never cleaned up, so evict old pairs when full
     __type(key, __u64);
     __type(value, __u64);
     __uint(max_entries, 25000);

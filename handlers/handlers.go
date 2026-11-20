@@ -14,7 +14,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/VictoriaMetrics/metrics"
 	"github.com/a-h/templ"
 	"github.com/atomic77/nethadone/config"
 	"github.com/atomic77/nethadone/database"
@@ -192,5 +191,7 @@ func Bandwidth(w http.ResponseWriter, r *http.Request) {
 }
 
 func MetricsHandleFunc(w http.ResponseWriter, req *http.Request) {
-	metrics.WritePrometheus(w, false)
+	if s := pairMetrics.Load(); s != nil {
+		s.WritePrometheus(w)
+	}
 }

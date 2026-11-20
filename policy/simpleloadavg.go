@@ -13,6 +13,7 @@ import (
 func InitPolicy() {
 
 	log.Println("Setting up SimpleLoadAverage policy")
+	applyPolicies() // stored policies must survive a restart
 	go pollPolicyCheck()
 }
 
@@ -138,6 +139,7 @@ func pollPolicyCheck() {
 }
 
 func checkPolicies() {
+	database.PruneDns()
 	increased := increaseThrottling()
 	decreased := decreasingThrottling()
 	if increased || decreased {

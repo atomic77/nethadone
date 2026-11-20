@@ -1,43 +1,38 @@
 package handlers
 
 import (
-	"net"
 	"os"
 	"testing"
 
 	"github.com/alecthomas/repr"
-	"github.com/florianl/go-tc"
-	"golang.org/x/sys/unix"
+	"github.com/vishvananda/netlink"
 )
 
 func TestQdiscList(t *testing.T) {
 	skipUnlessRoot(t)
 
-	tcnl := getTcnl()
-
-	qobj, _ := tcnl.Qdisc().Get()
-	for _, c := range qobj {
-
-		println(repr.String(c))
+	qdiscs, err := netlink.QdiscList(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, q := range qdiscs {
+		t.Log(repr.String(q))
 	}
 }
 
 func TestClassList(t *testing.T) {
 	skipUnlessRoot(t)
 
-	tcnl := getTcnl()
-
-	iface, err := net.InterfaceByName("eth1")
+	link, err := netlink.LinkByName("eth1")
 	if err != nil {
 		t.Skip("no eth1: ", err)
 	}
-	cobj, _ := tcnl.Class().Get(&tc.Msg{
-		Family:  unix.AF_UNSPEC,
-		Ifindex: uint32(iface.Index),
-	})
-	for _, c := range cobj {
-
-		println(repr.String(c))
+	classes, err := netlink.ClassList(link, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range classes {
+		t.Log(repr.String(c))
 	}
 }
 

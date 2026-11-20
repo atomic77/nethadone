@@ -139,7 +139,7 @@ func loadThrottler(t *testing.T, policies []models.IpPolicy) *throttleObjects {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { objs.Map.Close(); objs.Prog.Close() })
+	t.Cleanup(func() { objs.Close() })
 	return objs
 }
 

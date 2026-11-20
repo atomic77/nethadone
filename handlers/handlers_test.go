@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/VictoriaMetrics/metrics"
 	"github.com/atomic77/nethadone/config"
 	"github.com/atomic77/nethadone/database"
 	"github.com/atomic77/nethadone/models"
@@ -207,5 +208,13 @@ func TestGlobForm(t *testing.T) {
 	}
 	if rec := post(GlobDelete, url.Values{"name": {"yt"}}); rec.Code != http.StatusSeeOther || database.GetGlob("yt") != nil {
 		t.Errorf("delete: got %d, glob still present: %v", rec.Code, database.GetGlob("yt") != nil)
+	}
+}
+
+func TestPairMetricNameEscapes(t *testing.T) {
+	b := models.Bandwidth{SrcIpAddr: net.IPv4(192, 168, 0, 2), DestIpAddr: net.IPv4(1, 2, 3, 4),
+		ProbDomain: `a\"b.example.com`, GlobName: `my "fun" sites\`}
+	if err := metrics.ValidateMetric(pairMetricName(b)); err != nil {
+		t.Fatal(err)
 	}
 }

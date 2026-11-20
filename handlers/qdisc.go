@@ -59,16 +59,17 @@ func createQdiscs() {
 		log.Fatal("couldn't add root qdisc: ", err)
 	}
 
+	wan := uint64(config.Cfg.WanMbps) * MBit
 	rootClsAttr := netlink.NewHtbClass(
 		netlink.ClassAttrs{LinkIndex: iface.Index, Handle: netlink.MakeHandle(1, 1), Parent: netlink.MakeHandle(1, 0)},
-		netlink.HtbClassAttrs{Rate: 100 * MBit, Ceil: 100 * MBit},
+		netlink.HtbClassAttrs{Rate: wan, Ceil: wan},
 	)
 	err = netlink.ClassAdd(rootClsAttr)
 	if err != nil {
 		log.Fatal("couldn't add root class: ", err)
 	}
 
-	leaves := generateQdiscLeafNodes(iface)
+	leaves := generateQdiscLeafNodes(iface, wan)
 
 	createLeafQdiscs(&leaves)
 
@@ -100,7 +101,7 @@ func recreateBpfQdisc(iface *net.Interface) {
 	}
 }
 
-func generateQdiscLeafNodes(iface *net.Interface) []leafConfig {
+func generateQdiscLeafNodes(iface *net.Interface, wan uint64) []leafConfig {
 	/* Create child nodes roughly equivalent to the following
 
 	sudo tc class add dev lan0 parent 1:1 classid 1:10 htb rate 95Mbit ceil 100Mbit
@@ -115,7 +116,7 @@ func generateQdiscLeafNodes(iface *net.Interface) []leafConfig {
 	The first will be the 'open' pipe based on the configured bandwidth for the WAN
 	*/
 	leaves := []leafConfig{
-		{Rate: 95 * MBit, Ceil: 100 * MBit, Kind: "prio", Iface: iface.Index},
+		{Rate: wan * 95 / 100, Ceil: wan, Kind: "prio", Iface: iface.Index},
 	}
 
 	for i := 1; i <= config.Cfg.NumQdiscClasses; i++ {
@@ -158,7 +159,7 @@ func createLeafQdiscs(leaves *[]leafConfig) {
 		handleId := leafHandle(idx)
 		cls := netlink.NewHtbClass(
 			netlink.ClassAttrs{LinkIndex: leaf.Iface, Handle: netlink.MakeHandle(1, handleId), Parent: netlink.MakeHandle(1, 1)},
-			netlink.HtbClassAttrs{Rate: leaf.Rate, Ceil: leaf.Rate},
+			netlink.HtbClassAttrs{Rate: leaf.Rate, Ceil: leaf.Ceil},
 		)
 
 		err := netlink.ClassAdd(cls)

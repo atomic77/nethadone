@@ -33,14 +33,16 @@ func GetDomainsByIP() map[string][]string {
 }
 
 // PruneDns drops DNS rows older than the window GetIPsMatchingGlob considers.
+// It runs on every policy check so the table stays bounded on a long-running router.
 func PruneDns() {
 	res, err := dnsDb.Exec(`DELETE FROM dns WHERE tstamp < date('now', '-5 days')`)
 	if err != nil {
 		log.Println("failed to prune dns cache ", err)
 		return
 	}
-	n, _ := res.RowsAffected()
-	log.Println("Pruned ", n, " stale rows from DNS cache")
+	if n, _ := res.RowsAffected(); n > 0 {
+		log.Println("Pruned ", n, " stale rows from DNS cache")
+	}
 }
 
 func GetIPsMatchingGlob(g *models.GlobGroup) []string {

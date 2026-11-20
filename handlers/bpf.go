@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -12,18 +13,14 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/alecthomas/repr"
 	"github.com/atomic77/nethadone/config"
 	"github.com/atomic77/nethadone/database"
 	"github.com/atomic77/nethadone/models"
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/perf"
-	tc "github.com/florianl/go-tc"
-	"github.com/florianl/go-tc/core"
 	"github.com/miekg/dns"
+	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
-
-	"github.com/mdlayher/netlink"
 )
 
 // TODO These generated bpf2go files should probably go somewhere else
@@ -43,7 +40,6 @@ type throttleObjects struct {
 }
 
 type BpfContext struct {
-	Tcnl *tc.Tc
 	// bpf2go generated
 	DnspktObjs     *dnspktObjects
 	TrafficmonObjs *trafficmonObjects
@@ -67,10 +63,7 @@ func (objs *throttleObjects) counter(id uint32) (uint64, error) {
 }
 
 func (objs *throttleObjects) Close() error {
-	if err := objs.Prog.Close(); err != nil {
-		return err
-	}
-	return nil
+	return errors.Join(objs.Map.Close(), objs.Prog.Close())
 }
 
 func Initialize() {
@@ -92,26 +85,24 @@ func Initialize() {
 	// For reasons I've yet to understand (I feel like this isn't the first
 	// time I'm adding such a comment :) DNS answers don't seem to be caught
 	// on the LAN interface...
-	attachDnsSniffer(config.Cfg.WanInterface, tc.HandleMinEgress)
-	attachDnsSniffer(config.Cfg.WanInterface, tc.HandleMinIngress)
-	attachTrafficMonitor(config.Cfg.LanInterface, tc.HandleMinEgress)
-
-	// Rebuild with our default target filtering so there's something
-	// attached on startup
-	ipPolicies := []models.IpPolicy{
-		{SrcIpAddr: "", DestIpAddr: "192,168,0,174", ClassId: 10},
-	}
-	ApplyPolicies(&ipPolicies)
+	attachFilter(config.Cfg.WanInterface, netlink.HANDLE_MIN_EGRESS, BpfCtx.DnspktObjs.UdpDnsSniff, "dnspkt", 0)
+	attachFilter(config.Cfg.WanInterface, netlink.HANDLE_MIN_INGRESS, BpfCtx.DnspktObjs.UdpDnsSniff, "dnspkt", 0)
+	attachFilter(config.Cfg.LanInterface, netlink.HANDLE_MIN_EGRESS, BpfCtx.TrafficmonObjs.TrafficMon, "trafficmon", 0)
+	// One reader: a second one on the same perf map takes it over and leaves the first idle
+	go pollDnsResponses()
+	// The throttler is attached by policy.InitPolicy, from the stored policies
 }
 
 func ApplyPolicies(ipPolicies *[]models.IpPolicy) {
 	objs, err := buildThrottler(ipPolicies)
 	if err != nil {
-		log.Fatal(err)
+		// Exiting would drop all throttling; the previous throttler stays attached instead
+		log.Println("keeping the previous throttler: ", err)
+		return
 	}
 	throttleMu.Lock()
 	defer throttleMu.Unlock()
-	reattachThrottler(objs, config.Cfg.LanInterface, tc.HandleMinEgress)
+	reattachThrottler(objs, config.Cfg.LanInterface)
 	throttleRules, throttleRulesAt = len(*ipPolicies), time.Now()
 }
 
@@ -179,148 +170,52 @@ func rebuildBpf(tplfile string, target *os.File, objFile *os.File, ipPolicies *[
 	return nil
 }
 
-func cleanupThrottler(iface *net.Interface) {
-	// Clean up any existing filters prior to rebuilding and attaching
-	tcnl := getTcnl()
-	msg := tc.Msg{
-		Ifindex: uint32(iface.Index),
-		Parent:  core.BuildHandle(0x1, 0x0),
-		// Where did this info flag come from ?
-		Info: 0x300,
-	}
-	tfilt, err := tcnl.Filter().Get(&msg)
+// reattachThrottler replaces the throttle filter on the LAN HTB root with objs.
+func reattachThrottler(objs *throttleObjects, ifname string) {
+	log.Println("(Re)attaching throttler BPF to if ", ifname)
+	link, err := netlink.LinkByName(ifname)
 	if err != nil {
-		log.Fatal("could not get tc filter info ", err)
+		log.Fatal(err)
 	}
-	for _, tobj := range tfilt {
-		if tobj.BPF != nil && tobj.BPF.Name != nil && *tobj.BPF.Name == "throttle" {
-			tcnl.Filter().Delete(&tobj)
+	htbRoot := netlink.MakeHandle(1, 0)
+	filters, err := netlink.FilterList(link, htbRoot)
+	if err != nil {
+		log.Fatal("could not list tc filters ", err)
+	}
+	for _, f := range filters {
+		if bf, ok := f.(*netlink.BpfFilter); ok && bf.Name == "throttle" {
+			netlink.FilterDel(bf)
 		}
 	}
 	if BpfCtx.ThrottleObjs != nil {
-		BpfCtx.ThrottleObjs.Map.Close()
-		BpfCtx.ThrottleObjs.Prog.Close()
 		BpfCtx.ThrottleObjs.Close()
 	}
-
-}
-
-func reattachThrottler(objs *throttleObjects, ifname string, direction uint32) {
-
-	log.Println("(Re)attaching throttler BPF to if ", ifname, " direction ", direction)
-
-	tcnl := getTcnl()
-	iface, err := net.InterfaceByName(ifname)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	cleanupThrottler(iface)
 	BpfCtx.ThrottleObjs = objs
-
-	fd := uint32(BpfCtx.ThrottleObjs.Prog.FD())
-	flags := uint32(0x1)
-	clsId := core.BuildHandle(1, 0)
-
-	// Create a tc/filter object that will attach the eBPF program to the qdisc/clsact.
-	bpfName := "throttle"
-	filter := tc.Object{
-		Msg: tc.Msg{
-			Family:  unix.AF_UNSPEC,
-			Ifindex: uint32(iface.Index),
-			Handle:  core.BuildHandle(0x0, 0x1),
-			Parent:  core.BuildHandle(0x1, 0x0),
-			Info:    0x300,
-		},
-		Attribute: tc.Attribute{
-			Kind: "bpf",
-			BPF: &tc.Bpf{
-				FD:      &fd,
-				Flags:   &flags,
-				Name:    &bpfName,
-				ClassID: &clsId,
-			},
-		},
-	}
-	log.Println("Created filter object: ", repr.String(filter))
-	// Attach the tc/filter object with the eBPF program to the qdisc/clsact.
-	if err := tcnl.Filter().Add(&filter); err != nil {
-		log.Fatalln("could not attach filter for DNS sniffer", err)
-		return
-	}
+	attachFilter(ifname, htbRoot, objs.Prog, "throttle", htbRoot)
 }
 
-func attachTrafficMonitor(ifname string, direction uint32) {
-
-	log.Println("Attaching bandwidth monitor BPF to if ", ifname, " direction ", direction)
-
-	tcnl := getTcnl()
-	iface, err := net.InterfaceByName(ifname)
+// attachFilter attaches prog as a direct-action tc filter on ifname under parent
+// (a clsact hook or the HTB root). classID 0 leaves the filter's class unset.
+func attachFilter(ifname string, parent uint32, prog *ebpf.Program, name string, classID uint32) {
+	log.Println("Attaching ", name, " BPF to if ", ifname, " parent ", netlink.HandleStr(parent))
+	link, err := netlink.LinkByName(ifname)
 	if err != nil {
 		log.Fatal(err)
 	}
-	fd := uint32(BpfCtx.TrafficmonObjs.TrafficMon.FD())
-	flags := uint32(0x1)
-
-	// Create a tc/filter object that will attach the eBPF program to the qdisc/clsact.
-	filter := tc.Object{
-		Msg: tc.Msg{
-			Family:  unix.AF_UNSPEC,
-			Ifindex: uint32(iface.Index),
-			Handle:  0,
-			Parent:  core.BuildHandle(tc.HandleRoot, direction),
-			Info:    0x300,
+	filter := &netlink.BpfFilter{
+		FilterAttrs: netlink.FilterAttrs{
+			LinkIndex: link.Attrs().Index,
+			Parent:    parent,
+			Protocol:  unix.ETH_P_ALL,
 		},
-		Attribute: tc.Attribute{
-			Kind: "bpf",
-			BPF: &tc.Bpf{
-				FD:    &fd,
-				Flags: &flags,
-			},
-		},
+		Fd:           prog.FD(),
+		Name:         name,
+		DirectAction: true,
+		ClassId:      classID,
 	}
-	// Attach the tc/filter object with the eBPF program to the qdisc/clsact.
-	if err := tcnl.Filter().Add(&filter); err != nil {
-		log.Fatalln("could not attach filter for DNS sniffer", err)
-		return
+	if err := netlink.FilterAdd(filter); err != nil {
+		log.Fatalln("could not attach filter for ", name, " on ", ifname, ": ", err)
 	}
-}
-
-func attachDnsSniffer(ifname string, direction uint32) {
-
-	log.Println("Attaching DNS sniffer BPF to if ", ifname, " direction ", direction)
-
-	tcnl := getTcnl()
-	iface, err := net.InterfaceByName(ifname)
-	if err != nil {
-		log.Fatal(err)
-	}
-	fd := uint32(BpfCtx.DnspktObjs.UdpDnsSniff.FD())
-	flags := uint32(0x1)
-
-	// Create a tc/filter object that will attach the eBPF program to the qdisc/clsact.
-	filter := tc.Object{
-		Msg: tc.Msg{
-			Family:  unix.AF_UNSPEC,
-			Ifindex: uint32(iface.Index),
-			Handle:  0,
-			Parent:  core.BuildHandle(tc.HandleRoot, direction),
-			Info:    0x300,
-		},
-		Attribute: tc.Attribute{
-			Kind: "bpf",
-			BPF: &tc.Bpf{
-				FD:    &fd,
-				Flags: &flags,
-			},
-		},
-	}
-	// Attach the tc/filter object with the eBPF program to the qdisc/clsact.
-	if err := tcnl.Filter().Add(&filter); err != nil {
-		log.Fatalln("could not attach filter for DNS sniffer", err)
-		return
-	}
-	go pollDnsResponses()
 }
 
 func pollDnsResponses() {
@@ -371,22 +266,4 @@ func handleDnsPacket(raw []byte) {
 	if err := database.AddDns(names, ips); err != nil {
 		log.Println("failed to write to dns db", err)
 	}
-}
-
-func getTcnl() *tc.Tc {
-	if BpfCtx.Tcnl != nil {
-		return BpfCtx.Tcnl
-	}
-
-	tcnl, err := tc.Open(&tc.Config{})
-	if err != nil {
-		log.Fatal("Failed to get tc handle", err)
-	}
-
-	err = tcnl.SetOption(netlink.ExtendedAcknowledge, true)
-	if err != nil {
-		log.Fatal("could not set option ExtendedAcknowledge ", err)
-	}
-	BpfCtx.Tcnl = tcnl
-	return BpfCtx.Tcnl
 }

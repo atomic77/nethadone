@@ -61,7 +61,7 @@ Test seams are package variables: `database.GetSrcGlobUsage` (usage rates) and `
 
 ## Conventions and invariants
 
-- **Global state everywhere**: `config.Cfg`, `database.dnsDb/cfgDb/usage` and `handlers.BpfCtx`. Init order in `main` matters: `ParseConfig` → WAN detection → `handlers.Check` → `database.Connect` → `handlers.Initialize` (qdiscs + BPF) → `InitMetrics` → `InitPolicy`.
+- **Global state everywhere**: `config.Cfg`, `database.dnsDb/cfgDb/usage` and `handlers.BpfCtx`. Init order in `main` matters: `ParseConfig` → WAN detection → `handlers.Check` → `database.Connect` → `handlers.Initialize` (qdiscs + BPF) → `InitMetrics` → `InitPolicy` (attaches the throttler from the stored policies).
 - **Web UI**: stdlib `net/http` mux in `cmd/nethadone.go`, wrapped in `http.CrossOriginProtection` (there is no login). Handlers render full pages; HTMX polling and `hx-boost` pick fragments with `hx-select`, so no partial endpoints. Form errors return 422 (swapped thanks to the `htmx-config` meta tag); success redirects with 303.
 - **Errors**: setup and kernel failures call `log.Fatal`. Request-time and loop failures log and continue. There is no logging framework, only `log.Println`.
 - **Class IDs**: a policy `class` is a multiple of 10 (10, 20, …). The template emits it as `0x{{ .ClassId }}`, so class 10 becomes tc minor `0x10`. `qdisc.go:createLeafQdiscs` creates leaf classes `1:(idx+1)*16`, which are 0x10, 0x20, and so on. If you change either side, keep them in sync.
@@ -74,11 +74,9 @@ Test seams are package variables: `database.GetSrcGlobUsage` (usage rates) and `
 
 ## Known issues found during review (not yet fixed)
 
-- The throttler emits one `if` per (client, IP) pair. clang memory grows faster than the rule count (~360 MB at 500 rules, ~1.1 GB at 1000). Compilation fails at ~2000 rules and the 7.0 verifier rejects ~1000. Any failure is a `log.Fatal` in `ApplyPolicies`. A BPF hash map keyed by IP pair would remove the limit.
+- The throttler emits one `if` per (client, IP) pair. clang memory grows faster than the rule count (~360 MB at 500 rules, ~1.1 GB at 1000). Compilation fails at ~2000 rules and the 7.0 verifier rejects ~1000. On failure `ApplyPolicies` logs and keeps the previous throttler, so new policies silently stop reaching the kernel. A BPF hash map keyed by IP pair would remove the limit.
 - Class IDs are hex-encoded decimals, so the class ↔ leaf invariant breaks if `num_qdisc_classes` ≥ 9 (class 100 → `0x100`, but leaf 9 is `0xa0`).
 - `database.Connect`: `sqlx.Open` errors are checked only after `.DB.SetMaxOpenConns` has already been called on the result.
-- `handlers.Initialize` applies a hardcoded placeholder policy (`192,168,0,174`, class 10) at startup.
-- `handlers/bpf.go`: `attachTrafficMonitor` and `reattachThrottler` log "DNS sniffer" in their error messages (copy-paste).
 
 ## Working in this repo
 
