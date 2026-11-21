@@ -19,16 +19,32 @@ Nethadone is in active development. Devices tested so far:
 | [Orange Pi R1](http://www.orangepi.org/html/hardWare/computerAndMicrocontrollers/details/Orange-Pi-R1.html) | armv7 | wired or wifi hotspot | BTF kernel required |
 | [Orange Pi Zero](http://www.orangepi.org/html/hardWare/computerAndMicrocontrollers/details/Orange-Pi-Zero-LTS.html) | armv7 | wifi hotspot | BTF kernel required |
 | [Orange Pi R1 Plus](http://www.orangepi.org/html/hardWare/computerAndMicrocontrollers/details/orange-pi-R1-Plus.html) | arm64 | wired (2 ethernet ports) |  |
+| [Raspberry Pi 3B+](https://www.raspberrypi.com/products/raspberry-pi-3-model-b-plus/) | arm64 | wifi hotspot | requires [Ubuntu Server](https://ubuntu.com/download/raspberry-pi) (64-bit); Raspberry Pi OS [kernels lack BTF](https://github.com/raspberrypi/linux/issues/6622) |
 | Orange Pi Zero2  | arm64 | — | wifi hotspot currently does not work, see below |
 | Orange Pi 3 LTS | arm64 | — | wifi hotspot currently does not work, see below |
 
-Testing and support for Raspberry Pi and other boards to come.
+Testing for other boards to come as I can get my hands on them. 
+
+
 
 > [!WARNING]
 > Unfortunately, despite having great hardware specs for this use case, the Orange Pi Zero2 and Pi 3 LTS, 
 > and likely other boards with the Unisoc **UWE5622** wifi chip, have no reliable access point mode due to apparent firmware limitations,
 > making them unsuitable out of the box. If you already have one of these boards and want to use it for nethadone, you will likely need
 > to get a USB Wifi dongle.
+
+### USB wifi adapters
+
+For boards without wifi, or with poor access point support, a USB wifi adapter can run the hotspot instead. Some I have tried:
+
+| Adapter | Standard | Status |
+|---|---|---|
+| AR9271 clone (`ath9k_htc` driver) | 802.11n, 1x1, 2.4 GHz only, USB 2.0 | tested and working well |
+| TP-Link Archer T3U Plus (Realtek RTL8812BU) | 802.11ac, 2x2, dual-band, USB 3.0 | tested and working well|
+
+If the board also has onboard wifi you don't want to use, ensure you pass the adapter's interface to the installer
+(`ip link` lists it, usually as `wlx...`) so the hotspot uses it:
+`sudo scripts/install.sh --hotspot SSID PASS --lan wlx...`.
 
 Please check out [doc/install.md](doc/install.md) for more details.
 

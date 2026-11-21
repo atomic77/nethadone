@@ -75,6 +75,13 @@ This creates a NetworkManager hotspot on the wifi interface (DHCP on
 `10.42.0.0/24`, NAT out of the wired port), sets it as the LAN and makes it
 start on boot. Plug the wired port into your main router.
 
+The hotspot needs the wifi regulatory country: pass `--country CA` (your
+two-letter code), or the script asks for it unless one is already set. It is
+applied with `iw reg set` and kept across reboots in
+`/etc/modprobe.d/nethadone-regdom.conf`. On boards with the Unisoc UWE5622
+wifi chip (Orange Pi Zero2, 3 LTS) the script warns that access point mode is
+unreliable and applies the 2.4 GHz / WPA2 / PMF-off workaround.
+
 > [!NOTE]
 > The hotspot also runs a caching DNS server (`dnsmasq`). Clients that are
 > given a local DNS server over DHCP usually skip DNS-over-HTTPS, so nethadone

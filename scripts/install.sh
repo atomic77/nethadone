@@ -7,6 +7,7 @@
 # Options:
 #   --lan IF                LAN interface (default: detected, see below)
 #   --hotspot SSID PASS     create a NetworkManager wifi hotspot as the LAN (it also does DHCP, DNS and NAT)
+#   --country CC            wifi regulatory country for the hotspot, e.g. CA (asked for if not set)
 #   --nat                   add an nftables masquerade rule on the WAN (wired setups without a hotspot)
 #   --binary PATH           install this binary instead of downloading the latest release
 #   --no-start              only install files: no sysctl, network changes, checks or service start
@@ -22,11 +23,12 @@ ETC=/etc/nethadone
 CONF=$ETC/nethadone.yml
 UNIT=/etc/systemd/system/nethadone.service
 
-lan="" ssid="" pass="" nat=0 binary="" start=1
+lan="" ssid="" pass="" country="" nat=0 binary="" start=1
 while (($#)); do
 	case $1 in
 	--lan) lan=$2; shift ;;
 	--hotspot) ssid=$2 pass=$3; shift 2 ;;
+	--country) country=${2^^}; shift ;;
 	--nat) nat=1 ;;
 	--binary) binary=$2; shift ;;
 	--no-start) start=0 ;;
@@ -48,6 +50,65 @@ esac
 
 wan_if() { ip -4 route show default 2>/dev/null | awk '{for (i = 1; i < NF; i++) if ($i == "dev") { print $(i + 1); exit }}'; }
 is_wireless() { [ -d "/sys/class/net/$1/wireless" ]; }
+# Unisoc UWE5622 (Orange Pi Zero2, 3 LTS, ...): its driver modules are sprdwl_ng / uwe5622_*
+is_uwe5622() { compgen -G '/sys/module/sprdwl*' >/dev/null || compgen -G '/sys/module/uwe5622*' >/dev/null; }
+
+# Preflight: fail before installing anything. Skipped with --no-start, where the
+# running kernel and wifi are the build host's, not the device's.
+if ((start)); then
+	echo "== preflight"
+	if [ -e /sys/kernel/btf/vmlinux ]; then
+		echo "kernel $(uname -r) has BTF"
+	else
+		model=$(tr -d '\0' 2>/dev/null </proc/device-tree/model || true)
+		echo "error: kernel $(uname -r) has no BTF (/sys/kernel/btf/vmlinux), which nethadone needs to load its eBPF programs." >&2
+		if [[ $model == *"Raspberry Pi"* ]] && { [ -f /etc/rpi-issue ] || grep -q '^ID=raspbian' /etc/os-release; }; then
+			cat >&2 <<-EOF
+				This $model runs Raspberry Pi OS, whose kernel is built without BTF.
+				Reflash it with Ubuntu Server (64-bit), whose kernels have BTF, using Raspberry Pi Imager:
+				  https://ubuntu.com/download/raspberry-pi
+				then run this script again.
+			EOF
+		elif [ $arch = arm ]; then
+			# Keep the board's kernel branch (legacy/current) so the bootloader setup still matches
+			branch=$(uname -r | grep -oE '(legacy|current)-sunxi' || echo current-sunxi)
+			cat >&2 <<-EOF
+				Armbian's armv7 kernels (Orange Pi R1 / Zero) lack BTF. Install one of the BTF builds from
+				  https://github.com/$REPO/releases/tag/kernel-2026-11-14
+				for example the $branch kernel and device tree:
+				  cd "\$(mktemp -d)"
+				  curl -fsSL https://api.github.com/repos/$REPO/releases/tags/kernel-2026-11-14 |
+				    grep -oE 'https://[^"]*linux-(image|dtb)-${branch}[^"]*\.deb' | xargs -n1 curl -fLO
+				  sudo apt-get install ./linux-*.deb && sudo reboot
+				then run this script again.
+			EOF
+		else
+			echo "Install a BTF-enabled kernel (see https://github.com/$REPO/blob/main/doc/install.md), reboot, then run this script again." >&2
+		fi
+		exit 1
+	fi
+
+	if [ -n "$ssid" ]; then
+		# An unset regulatory domain ("country 00") leaves most channels disabled and the AP may not start
+		if [ -z "$country" ] && command -v iw >/dev/null; then
+			country=$(iw reg get 2>/dev/null | awk '/^country/ {sub(":", "", $2); print $2; exit}')
+			[ "$country" = 00 ] && country=""
+		fi
+		if [ -z "$country" ]; then
+			# /dev/tty: stdin is the script itself with curl | bash
+			{ exec 3</dev/tty; } 2>/dev/null || die "the wifi country is not set; pass --country CC"
+			read -rp "Wifi country code for the hotspot (2 letters, e.g. CA, US, DE): " -u 3 country || true
+			exec 3<&-
+			country=${country^^}
+		fi
+		[[ $country =~ ^[A-Z]{2}$ ]] || die "invalid wifi country code: $country"
+		echo "wifi country $country"
+		if is_uwe5622; then
+			echo "warning: this board's Unisoc UWE5622 wifi has unreliable access point mode: clients may fail to connect or drop out." >&2
+			echo "warning: for a better experience use a USB wifi adapter (--lan IF) or a wired LAN (--nat)." >&2
+		fi
+	fi
+fi
 
 echo "== packages"
 # clang + libbpf + kernel UAPI headers (via libc6-dev, so a board kernel's own
@@ -56,7 +117,7 @@ pkgs=(curl ca-certificates clang libbpf-dev libc6-dev avahi-daemon)
 # Known-working asm/ headers on the Orange Pi R1/Zero (see rebuildBpf include paths)
 [ $arch = arm ] && pkgs+=(libc6-dev-armel-cross)
 ((nat)) && pkgs+=(nftables)
-[ -n "$ssid" ] && pkgs+=(network-manager)
+[ -n "$ssid" ] && pkgs+=(network-manager iw rfkill)
 apt-get update -qq
 DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "${pkgs[@]}"
 
@@ -82,14 +143,21 @@ if [ -n "$ssid" ]; then
 		[ -n "$lan" ] || die "no wifi interface found for the hotspot"
 	fi
 	if ((start)); then
+		iw reg set "$country"
+		# iw reg set is lost on reboot; cfg80211 reads this when it loads
+		echo "options cfg80211 ieee80211_regdom=$country" >/etc/modprobe.d/nethadone-regdom.conf
+		rfkill unblock wifi
 		# activation can fail on the first try (see below); the profile is still created
 		nmcli device wifi hotspot ifname "$lan" con-name Hotspot ssid "$ssid" password "$pass" || true
-		# PMF off + WPA2/CCMP on 2.4 GHz: the Zero2's UWE5622 driver can't finish the handshake otherwise
-		nmcli connection modify Hotspot connection.autoconnect yes \
-			802-11-wireless.band bg 802-11-wireless.channel 6 \
-			802-11-wireless-security.key-mgmt wpa-psk 802-11-wireless-security.proto rsn \
-			802-11-wireless-security.pairwise ccmp 802-11-wireless-security.group ccmp \
-			802-11-wireless-security.pmf disable
+		nmcli connection modify Hotspot connection.autoconnect yes
+		if is_uwe5622; then
+			# PMF off + WPA2/CCMP on 2.4 GHz: the UWE5622 driver can't finish the handshake otherwise
+			nmcli connection modify Hotspot \
+				802-11-wireless.band bg 802-11-wireless.channel 6 \
+				802-11-wireless-security.key-mgmt wpa-psk 802-11-wireless-security.proto rsn \
+				802-11-wireless-security.pairwise ccmp 802-11-wireless-security.group ccmp \
+				802-11-wireless-security.pmf disable
+		fi
 		nmcli connection up Hotspot
 		echo "hotspot $ssid up on $lan"
 	else
