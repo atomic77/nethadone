@@ -109,12 +109,13 @@ func Check(out io.Writer) bool {
 func checkKernelConfig(c *checker, release string) {
 	cfg, src := readKernelConfig(release)
 	if cfg == nil {
-		c.warn("", "kernel config not found (/proc/config.gz, /boot/config-%s); cannot check qdisc support", release)
+		c.warn("", "kernel config not found (/proc/config.gz, /boot/config-%s); cannot check qdisc and eBPF support", release)
 		return
 	}
 	var missing []string
 	for _, opt := range []string{"CONFIG_NET_SCH_HTB", "CONFIG_NET_SCH_NETEM", "CONFIG_NET_SCH_PRIO",
-		"CONFIG_NET_SCH_INGRESS", "CONFIG_NET_CLS_BPF", "CONFIG_NET_CLS_ACT"} {
+		"CONFIG_NET_SCH_INGRESS", "CONFIG_NET_CLS_BPF", "CONFIG_NET_CLS_ACT",
+		"CONFIG_BPF_EVENTS"} { // dnspkt's bpf_printk and bpf_probe_read_kernel need BPF_EVENTS
 		if v := cfg[opt]; v != "y" && v != "m" {
 			missing = append(missing, opt)
 		}
@@ -122,7 +123,7 @@ func checkKernelConfig(c *checker, release string) {
 	if len(missing) > 0 {
 		c.fail("use a kernel with these options enabled", "kernel lacks %s (from %s)", strings.Join(missing, ", "), src)
 	} else {
-		c.ok("kernel has HTB, netem, prio, clsact and cls_bpf (from %s)", src)
+		c.ok("kernel has HTB, netem, prio, clsact, cls_bpf and BPF events (from %s)", src)
 	}
 }
 

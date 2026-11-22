@@ -12,9 +12,11 @@ Getting nethadone onto a board takes four steps:
 | Board | Arch | Kernel | BTF kernel source | Status |
 |---|---|---|---|---|
 | Orange Pi R1 / Zero | armv7 | Armbian `legacy` sunxi 6.1 | `btf-kernel` release (`kernel-legacy-sunxi-orangepi-r1.tar.gz`) | tested |
-| Orange Pi R1 / Zero | armv7 | Armbian `current` sunxi 6.18 | built by the `armbian-btf-kernel-build` workflow (stock `current` lacks `CONFIG_NET_CLS_BPF`) | untested |
+| Orange Pi R1 / Zero | armv7 | Armbian `current` sunxi 6.18 | built by the `armbian-btf-kernel-build` workflow (stock sunxi kernels lack `CONFIG_NET_CLS_BPF` on every branch) | untested |
 | Orange Pi R1 Plus | arm64 | Armbian `legacy` rockchip64 | not currently published; build with the `armbian-btf-kernel-build` workflow | worked previously |
 | x86_64 VM | amd64 | distribution kernel | most already have BTF | for testing |
+
+For every other Armbian board, see [armbian.md](armbian.md).
 
 Tested with the Ubuntu Noble based Armbian images (24.04 / 24.08) on the 6.1 kernel, available
 from the [Armbian download page](https://www.armbian.com/download/?tx_maker=xunlong).
@@ -123,7 +125,7 @@ sudo nethadone check && sudo systemctl restart nethadone
 $ sudo nethadone check
 [ OK ] running as root
 [ OK ] kernel 6.1.104 has BTF
-[ OK ] kernel has HTB, netem, prio, clsact and cls_bpf (from /proc/config.gz)
+[ OK ] kernel has HTB, netem, prio, clsact, cls_bpf and BPF events (from /proc/config.gz)
 [ OK ] throttler compiles with clang and passes the verifier
 [ OK ] WAN interface eth0 is up
 [ OK ] default route via WAN eth0
@@ -238,7 +240,7 @@ try adding it to the Github Action.
 
 A board can run nethadone if `sudo nethadone check` passes. In practice that needs:
 
-* a kernel with BTF (`/sys/kernel/btf/vmlinux`), and HTB, netem, prio, clsact (`NET_SCH_INGRESS`) and cls_bpf;
+* a kernel with BTF (`/sys/kernel/btf/vmlinux`), and HTB, netem, prio, clsact (`NET_SCH_INGRESS`), cls_bpf and `BPF_EVENTS`;
 * `clang` able to compile the throttler for the BPF target with the distribution's UAPI headers;
 * two interfaces, one towards the internet and one towards your devices.
 

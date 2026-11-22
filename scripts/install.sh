@@ -88,6 +88,17 @@ if ((start)); then
 		exit 1
 	fi
 
+	# Same options as handlers/check.go:checkKernelConfig; no config file is left to `nethadone check`
+	kcfg=$({ zcat /proc/config.gz || cat "/boot/config-$(uname -r)"; } 2>/dev/null || true)
+	if [ -n "$kcfg" ]; then
+		missing=""
+		for opt in NET_SCH_HTB NET_SCH_NETEM NET_SCH_PRIO NET_SCH_INGRESS NET_CLS_BPF NET_CLS_ACT BPF_EVENTS; do
+			grep -qE "^CONFIG_$opt=[ym]$" <<<"$kcfg" || missing="$missing CONFIG_$opt"
+		done
+		[ -z "$missing" ] || die "kernel $(uname -r) lacks$missing, which nethadone needs. Install a kernel with these options (see https://github.com/$REPO/blob/main/doc/install.md), reboot, then run this script again."
+		echo "kernel $(uname -r) has the required tc and eBPF options"
+	fi
+
 	if [ -n "$ssid" ]; then
 		# An unset regulatory domain ("country 00") leaves most channels disabled and the AP may not start
 		if [ -z "$country" ] && command -v iw >/dev/null; then

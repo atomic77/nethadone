@@ -25,6 +25,9 @@ Nethadone is in active development. Devices tested so far:
 
 Testing for other boards to come as I can get my hands on them. 
 
+For other Armbian boards, [doc/armbian.md](doc/armbian.md) projects which ones should work with the stock
+Armbian kernel and which need a custom-built one.
+
 
 
 > [!WARNING]

@@ -29,7 +29,7 @@ Data flow:
 | `models/` | Plain structs with `db:` tags. |
 | `views/` | Web UI: `views.templ` (templ components, Pico.css + HTMX, `hx-boost` on `<body>`), vendored assets in `views/static/` embedded via `views/embed.go`. `views_templ.go` is **generated** and committed: edit the `.templ` and run `make generate`. |
 | `scripts/` | `install.sh` (idempotent device install: packages, binary, `/etc/nethadone/nethadone.yml`, `nethadone.service`, optional hotspot/NAT), `customize-image.sh` (BTF kernel + `install.sh --no-start`), `build.sh` (mounts an Armbian image and chroots with qemu-static), `netns-lab.sh`. |
-| `doc/` | Install, dev VM, qdisc and notes docs. `doc/todo.md` lists known open problems (DoH, CNAME chains). |
+| `doc/` | Install, Armbian board projection (`armbian.md`), dev VM, qdisc and notes docs. `doc/todo.md` lists known open problems (DoH, CNAME chains). |
 
 ## Build and run
 
