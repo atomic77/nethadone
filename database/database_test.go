@@ -155,3 +155,23 @@ func BenchmarkDomainsByIP(b *testing.B) {
 		}
 	}
 }
+
+func TestGlobEnabled(t *testing.T) {
+	connectTemp(t)
+	if err := AddGlob(&models.GlobGroup{Name: "yt", Glob: "*youtube.com"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetGlobEnabled("yt", false); err != nil {
+		t.Fatal(err)
+	}
+	if GetGlob("yt") != nil || len(GetGlobs()) != 0 {
+		t.Error("disabled glob still matched")
+	}
+	if all := GetAllGlobs(); len(all) != 1 || all[0].Enabled {
+		t.Errorf("all globs: %+v", all)
+	}
+	SetGlobEnabled("yt", true)
+	if GetGlob("yt") == nil {
+		t.Error("re-enabled glob not matched")
+	}
+}

@@ -36,13 +36,15 @@ Data flow:
 ```bash
 go build ./...                 # compiles on any Linux host, no cgo
 make build                     # ./nethadone in the repo root (not gitignored, don't commit it)
-make all                       # cross-compile arm, arm64, amd64 into build/
+make all                       # cross-compile arm, arm64, amd64 into build/ (CI adds VERSION=<release tag>)
 make run-root NTH_LAN=lan0 NTH_WAN=eth0   # build + sudo run with config/nethadone.yml
 go generate ./handlers         # regenerate bpf2go output after editing dnspkt/trafficmon .bpf.c (needs clang)
 make generate                  # regenerate views/views_templ.go after editing views/views.templ (go tool templ)
 ```
 
 Usage: `nethadone [check] [flags]`. `check` runs the read-only preflight checks (`handlers.Check`) and exits non-zero on failure; the same checks run at every startup. Flags: `-wan-interface`, `-lan-interface` and `-config-file` (default `/etc/nethadone/nethadone.yml`). The flags override the YAML. A missing default config falls back to the defaults; a missing `-config-file` that was passed explicitly is fatal, and unknown YAML keys are fatal. An empty `wan_interface` (the default) means the interface holding the IPv4 default route.
+
+Builds use the package path `./cmd`, not `./cmd/nethadone.go`, so Go stamps the git commit; `config.BuildInfo` shows it with the `-X`-injected `config.Version` on the status page and in the startup log.
 
 Runtime requirements on the target: root, a kernel with BTF, `clang` and the libbpf/kernel headers (the throttler is compiled on the device; include paths are hardcoded for aarch64 and armv7 in `handlers/bpf.go:rebuildBpf`; `nethadone check` test-compiles it). No Prometheus is needed; `/metrics` is only for people who want graphs.
 
@@ -69,6 +71,8 @@ Test seams are package variables: `database.GetSrcGlobUsage` (usage rates) and `
 - **Per-device vs shared throttling**: with `throttle_per_device: false`, `database.RecordUsage` sums usage under the source `database.AllDevices` ("all"), so policies are stored as `("all", glob)` and `GetIpPolicies` emits an empty `SrcIpAddr` (the template then matches the remote IP only). Policies of the other mode left over after a restart are never active and decay normally.
 - **IP format for BPF**: `IpPolicy.SrcIpAddr` and `DestIpAddr` use commas (`192,168,0,1`) because they feed the `IP_ADDRESS(o1,o2,o3,o4)` macro. The conversion happens in `database.GetIpPolicies`.
 - The throttler matches `l3->saddr == dest` and `l3->daddr == src` because it runs on **LAN egress**, so it sees reply traffic coming *back* from the remote site.
+- Glob groups have an `enabled` flag. `database.GetGlob`/`GetGlobs` return enabled groups only, so a disabled group drops out of usage, matching and the throttler and its policies decay; only the globs page uses `GetAllGlobs`. The presets offered there are `handlers.presetGlobs`.
+- `POST /update` (`handlers/update.go`) downloads the latest release next to the binary, runs `<new> check` with the current flags, renames it over the binary and `syscall.Exec`s it (same PID, works with or without systemd).
 - Glob groups use sqlite `GLOB` syntax (e.g. `*.reddit.com`), matched against the `dns` table. The UI validates them with `filepath.Match`, which also does the matching on `/bandwidth`. Only IPs seen in the last ~5 days count.
 - The throttler is deliberately **not** built with bpf2go: bpf2go embeds bytecode, which would prevent live recompilation. Keep it template-based unless you redesign the reload path.
 - Config: add new fields to `Config` with a `yaml:"snake_case"` tag, a default in `baseConfig`, and a commented entry in `config/nethadone.yml` with the same value (`config/config_test.go` fails otherwise).

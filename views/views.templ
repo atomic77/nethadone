@@ -54,7 +54,7 @@ templ layout(title, path string) {
 	</html>
 }
 
-templ Status(lan, wan string, nGlobs, nPolicies int, ifaces []models.Iface) {
+templ Status(lan, wan string, nGlobs, nPolicies int, ifaces []models.Iface, version, updateMsg string) {
 	@layout("Status", "/") {
 		<h2>Status</h2>
 		<div class="grid">
@@ -84,6 +84,17 @@ templ Status(lan, wan string, nGlobs, nPolicies int, ifaces []models.Iface) {
 				</tbody>
 			</table>
 		</div>
+		<article>
+			<header>Software update</header>
+			<p>Running <strong>{ version }</strong></p>
+			if updateMsg != "" {
+				<pre role="alert" style="white-space:pre-wrap">{ updateMsg }</pre>
+			}
+			<form method="post" action="/update" hx-confirm="Download the latest Nethadone release from GitHub and restart? Throttling may pause briefly." hx-disabled-elt="find button">
+				<p><small>Downloads the latest release from GitHub, runs <code>nethadone check</code> with it, then replaces this binary and restarts. Glob groups, policies and settings are kept; usage history is reset.</small></p>
+				<button type="submit">Update to latest release</button>
+			</form>
+		</article>
 	}
 }
 
@@ -141,18 +152,25 @@ templ Policies(rows []models.PolicyRow, nRules int, rulesAt time.Time, classLabe
 	}
 }
 
-templ Globs(globs []models.GlobGroup, form models.GlobGroup, errMsg string) {
+// presets are the built-in glob groups not yet added.
+templ Globs(globs, presets []models.GlobGroup, form models.GlobGroup, errMsg string) {
 	@layout("Globs", "/globs") {
 		<hgroup>
 			<h2>Glob groups</h2>
-			<p>Wildcard patterns matched against domains seen in DNS answers, e.g. <code>*.reddit.com</code>. Traffic to matching sites is throttled when used heavily.</p>
+			<p>Wildcard patterns matched against domains seen in DNS answers, e.g. <code>*.reddit.com</code>. Traffic to matching sites is throttled when used heavily. Switch a group off to stop throttling it without deleting it.</p>
 		</hgroup>
 		<div class="overflow-auto">
 			<table class="striped">
-				<thead><tr><th>Name</th><th>Glob</th><th>Description</th><th></th></tr></thead>
+				<thead><tr><th>On</th><th>Name</th><th>Glob</th><th>Description</th><th></th></tr></thead>
 				<tbody>
 					for _, g := range globs {
 						<tr>
+							<td>
+								<form method="post" action="/globs/enable" style="margin:0">
+									<input type="hidden" name="name" value={ g.Name }/>
+									<input type="checkbox" role="switch" name="enabled" value="1" checked?={ g.Enabled } aria-label={ "Throttle " + g.Name } onchange="this.form.requestSubmit()"/>
+								</form>
+							</td>
 							<td>{ g.Name }</td>
 							<td><code>{ g.Glob }</code></td>
 							<td>{ g.Description }</td>
@@ -165,7 +183,7 @@ templ Globs(globs []models.GlobGroup, form models.GlobGroup, errMsg string) {
 						</tr>
 					}
 					if len(globs) == 0 {
-						<tr><td colspan="4">No glob groups yet. Add one below.</td></tr>
+						<tr><td colspan="5">No glob groups yet. Add some below.</td></tr>
 					}
 				</tbody>
 			</table>
@@ -184,6 +202,19 @@ templ Globs(globs []models.GlobGroup, form models.GlobGroup, errMsg string) {
 				<button type="submit">Add</button>
 			</form>
 		</article>
+		if len(presets) > 0 {
+			<article>
+				<header>Add common glob groups</header>
+				<form method="post" action="/globs/presets">
+					<fieldset>
+						for _, p := range presets {
+							<label><input type="checkbox" name="preset" value={ p.Name }/> { p.Name } <small><code>{ p.Glob }</code> { p.Description }</small></label>
+						}
+					</fieldset>
+					<button type="submit">Add selected</button>
+				</form>
+			</article>
+		}
 	}
 }
 

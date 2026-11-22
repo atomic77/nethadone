@@ -63,7 +63,7 @@ up() {
 
 run() {
 	# Build as the invoking user: root usually has no go on PATH and shouldn't own the build cache
-	sudo -u "${SUDO_USER:-root}" -i bash -c "cd '$REPO' && go build -o build/nethadone-lab ./cmd/nethadone.go"
+	sudo -u "${SUDO_USER:-root}" -i bash -c "cd '$REPO' && go build -o build/nethadone-lab ./cmd"
 	# Seed the glob group once the web server is up
 	(for _ in $(seq 30); do
 		curl -sf -o /dev/null -d name=youtube -d 'glob=*.youtube.test.' -d description=lab \

@@ -128,7 +128,9 @@ pkgs=(curl ca-certificates clang libbpf-dev libc6-dev avahi-daemon)
 # Known-working asm/ headers on the Orange Pi R1/Zero (see rebuildBpf include paths)
 [ $arch = arm ] && pkgs+=(libc6-dev-armel-cross)
 ((nat)) && pkgs+=(nftables)
-[ -n "$ssid" ] && pkgs+=(network-manager iw rfkill)
+# NetworkManager shared mode runs dnsmasq for DHCP/DNS and adds its masquerade rule with nft;
+# minimal images (e.g. Armbian on the Orange Pi Zero) ship neither
+[ -n "$ssid" ] && pkgs+=(network-manager iw rfkill dnsmasq-base nftables)
 apt-get update -qq
 DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "${pkgs[@]}"
 

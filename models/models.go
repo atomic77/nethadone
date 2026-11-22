@@ -10,6 +10,7 @@ type GlobGroup struct {
 	Description string `db:"description"`
 	Glob        string `db:"glob"`
 	Device      string `db:"device"`
+	Enabled     bool   `db:"enabled"`
 }
 
 type Device struct {

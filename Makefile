@@ -1,5 +1,8 @@
 NTH_WAN ?= eth0
 NTH_LAN ?= lan0
+# Release name shown on the status page; CI passes the release tag
+VERSION ?= dev
+GOBUILD = go build -ldflags "-X github.com/atomic77/nethadone/config.Version=$(VERSION)"
 
 
 help: ## This help dialog.
@@ -9,15 +12,16 @@ generate: ## Regenerate templ views (views/*_templ.go)
 	go generate ./views
 
 run-root: 
-	go build -o build/ ./cmd/nethadone.go 
+	$(GOBUILD) -o build/nethadone ./cmd
 	sudo build/nethadone -lan-interface $(NTH_LAN) -wan-interface $(NTH_WAN) -config-file config/nethadone.yml
+.PHONY: all build run-root generate test
 all:
-	GOARCH=arm GOOS=linux go build -o build/nethadone-arm-linux ./cmd/nethadone.go 
-	GOARCH=arm64 GOOS=linux go build -o build/nethadone-arm64-linux ./cmd/nethadone.go 
-	GOARCH=amd64 GOOS=linux go build -o build/nethadone-amd64-linux ./cmd/nethadone.go 
+	GOARCH=arm GOOS=linux $(GOBUILD) -o build/nethadone-arm-linux ./cmd
+	GOARCH=arm64 GOOS=linux $(GOBUILD) -o build/nethadone-arm64-linux ./cmd
+	GOARCH=amd64 GOOS=linux $(GOBUILD) -o build/nethadone-amd64-linux ./cmd
 
 build:
-	go build ./cmd/nethadone.go
+	$(GOBUILD) -o nethadone ./cmd
 
 ### Tests: see doc/development.md
 KERNEL ?= v6.6.40

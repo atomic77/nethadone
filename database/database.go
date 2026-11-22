@@ -78,24 +78,40 @@ func Connect() {
 	for _, t := range cfgSchema {
 		cfgDb.MustExec(t)
 	}
+	// Added after the first release; fails harmlessly once the column exists
+	cfgDb.Exec(`ALTER TABLE glob_group ADD COLUMN enabled int NOT NULL DEFAULT 1`)
 	cfgDb.MustExec(`UPDATE glob_group SET glob = lower(rtrim(glob, '.')) WHERE glob LIKE '%.' OR glob <> lower(glob)`)
 }
 
+// GetGlob returns the enabled glob group called name, or nil.
 func GetGlob(name string) *models.GlobGroup {
 
 	glob := models.GlobGroup{}
-	err := cfgDb.Get(&glob, "SELECT * FROM glob_group WHERE name = $1", name)
+	err := cfgDb.Get(&glob, "SELECT * FROM glob_group WHERE name = $1 AND enabled", name)
 	if err != nil {
 		return nil
 	}
 	return &glob
 }
 
+// GetGlobs returns the enabled glob groups: disabled ones match nothing, so their policies decay.
 func GetGlobs() []models.GlobGroup {
 
 	globs := []models.GlobGroup{}
-	cfgDb.Select(&globs, "SELECT * FROM glob_group ")
+	cfgDb.Select(&globs, "SELECT * FROM glob_group WHERE enabled ORDER BY name")
 	return globs
+}
+
+// GetAllGlobs returns every glob group, enabled or not, for the globs page.
+func GetAllGlobs() []models.GlobGroup {
+	globs := []models.GlobGroup{}
+	cfgDb.Select(&globs, "SELECT * FROM glob_group ORDER BY name")
+	return globs
+}
+
+func SetGlobEnabled(name string, enabled bool) error {
+	_, err := cfgDb.Exec("UPDATE glob_group SET enabled = $1 WHERE name = $2", enabled, name)
+	return err
 }
 
 // NormaliseName lowercases a domain name or glob and drops the trailing root dot,

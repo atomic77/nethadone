@@ -206,8 +206,22 @@ func TestGlobForm(t *testing.T) {
 	if rec := post(GlobAdd, ok); rec.Code != http.StatusUnprocessableEntity {
 		t.Errorf("duplicate add: got %d, want 422", rec.Code)
 	}
+	if rec := post(GlobEnable, url.Values{"name": {"yt"}}); rec.Code != http.StatusSeeOther || database.GetGlob("yt") != nil {
+		t.Errorf("disable: got %d, glob still enabled", rec.Code)
+	}
+	if rec := post(GlobEnable, url.Values{"name": {"yt"}, "enabled": {"1"}}); rec.Code != http.StatusSeeOther || database.GetGlob("yt") == nil {
+		t.Errorf("enable: got %d, glob still disabled", rec.Code)
+	}
 	if rec := post(GlobDelete, url.Values{"name": {"yt"}}); rec.Code != http.StatusSeeOther || database.GetGlob("yt") != nil {
 		t.Errorf("delete: got %d, glob still present: %v", rec.Code, database.GetGlob("yt") != nil)
+	}
+	if rec := post(GlobPresets, url.Values{"preset": {"reddit", "nosuch"}}); rec.Code != http.StatusSeeOther || database.GetGlob("reddit") == nil {
+		t.Errorf("presets: got %d, reddit %v", rec.Code, database.GetGlob("reddit"))
+	}
+	rec := httptest.NewRecorder()
+	Globs(rec, httptest.NewRequest("GET", "/globs", nil))
+	if body := rec.Body.String(); strings.Contains(body, `name="preset" value="reddit"`) || !strings.Contains(body, `name="preset" value="tiktok"`) {
+		t.Error("preset list should offer tiktok but not the already added reddit")
 	}
 }
 
@@ -225,6 +239,7 @@ func TestPolicyRows(t *testing.T) {
 		{SrcIp: database.AllDevices, GlobGroup: "yt", Class: 20},
 		{SrcIp: "192.168.0.3", GlobGroup: "yt", Class: 40}, // rebuild failed: kernel still has 30
 		{SrcIp: "192.168.0.4", GlobGroup: "rd", Class: 10}, // not in the throttler at all
+		{SrcIp: "192.168.0.5", GlobGroup: "tw", Class: 30}, // glob group switched off
 	}
 	rules := []models.IpPolicy{
 		{SrcIpAddr: "192,168,0,2", DestIpAddr: "142,250,1,10", ClassId: 30, GlobGroup: "yt"},
@@ -233,7 +248,7 @@ func TestPolicyRows(t *testing.T) {
 		{SrcIpAddr: "192,168,0,3", DestIpAddr: "142,250,1,9", ClassId: 30, GlobGroup: "yt"},
 	}
 	domains := map[string][]string{"142.250.1.9": {"cdn.example.net", "www.youtube.com"}}
-	globs := []models.GlobGroup{{Name: "yt", Glob: "*.youtube.com"}}
+	globs := []models.GlobGroup{{Name: "yt", Glob: "*.youtube.com"}, {Name: "rd", Glob: "*reddit*"}}
 	rows := policyRows(policies, rules, map[string]string{"192.168.0.2": "kids-laptop"}, domains, globs)
 
 	r := rows[0]
@@ -249,5 +264,8 @@ func TestPolicyRows(t *testing.T) {
 	}
 	if r := rows[3]; len(r.Remotes) != 0 || !strings.Contains(r.Note, "Not in the running throttler") {
 		t.Errorf("missing row: %+v", r)
+	}
+	if r := rows[4]; !strings.Contains(r.Note, "switched off") {
+		t.Errorf("switched-off row note: %q", r.Note)
 	}
 }

@@ -59,6 +59,7 @@ func main() {
 		return
 	}
 
+	log.Println("Nethadone", config.BuildInfo())
 	log.Println("Configuration: ", repr.String(config.Cfg, repr.Indent("  ")))
 	if !handlers.Check(log.Writer()) {
 		log.Fatal("preflight checks failed, see above; run `nethadone check` after fixing")
@@ -79,6 +80,9 @@ func main() {
 	mux.HandleFunc("GET /globs", handlers.Globs)
 	mux.HandleFunc("POST /globs", handlers.GlobAdd)
 	mux.HandleFunc("POST /globs/delete", handlers.GlobDelete)
+	mux.HandleFunc("POST /globs/enable", handlers.GlobEnable)
+	mux.HandleFunc("POST /globs/presets", handlers.GlobPresets)
+	mux.HandleFunc("POST /update", handlers.Update)
 	mux.HandleFunc("GET /settings", handlers.Settings)
 	mux.HandleFunc("POST /settings", handlers.SettingsSave)
 	mux.HandleFunc("POST /settings/reset", handlers.SettingsReset)

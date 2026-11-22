@@ -20,7 +20,7 @@ jobs:
         go-version-file: go.mod
 
     - name: Build binaries
-      run: make all
+      run: make all VERSION=${{ steps.generate_release_name.outputs.release_name }}
 
     - name: Upload binaries to release
       uses: svenstaro/upload-release-action@v2
